@@ -21,7 +21,32 @@ OUT = "data/news.json"
 KEEP = ("gid", "title", "url", "contents", "date", "feedlabel", "feedname", "author", "tags")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GEMINI_BASE = os.environ.get("GEMINI_BASE", "https://generativelanguage.googleapis.com/v1beta/models")
-GEMINI_MODELS = [m for m in (os.environ.get("GEMINI_MODEL", "").strip(), "gemini-2.5-flash", "gemini-flash-latest") if m]
+GEMINI_FALLBACK = ["gemini-flash-latest", "gemini-2.5-flash"]
+_models_cache = []
+
+
+def gemini_models():
+    """Modelli da provare: quello scelto a mano, poi i «flash» più recenti che Google elenca per questa chiave."""
+    if _models_cache:
+        return _models_cache
+    found = []
+    try:
+        d = json.loads(http(f"{GEMINI_BASE}?pageSize=200", headers={"x-goog-api-key": GEMINI_KEY}, retries=2))
+        for m in d.get("models", []):
+            name = m.get("name", "").split("/")[-1]
+            if "generateContent" not in m.get("supportedGenerationMethods", []) or "flash" not in name:
+                continue
+            if any(x in name for x in ("lite", "image", "tts", "live", "audio", "embedding", "thinking", "exp", "vision", "robotics", "computer", "native")):
+                continue
+            ver = tuple(int(x) for x in re.findall(r"\d+", name)) or (0,)
+            found.append((ver, "preview" not in name, name))
+        found.sort(reverse=True)
+        print("modelli Gemini trovati: " + ", ".join(n for _, _, n in found[:5]), file=sys.stderr)
+    except Exception as e:  # noqa
+        print(f"  elenco modelli Gemini non disponibile ({str(e)[:150]})", file=sys.stderr)
+    chosen = [os.environ.get("GEMINI_MODEL", "").strip()] + [n for _, _, n in found[:3]] + GEMINI_FALLBACK
+    _models_cache.extend(m for i, m in enumerate(chosen) if m and m not in chosen[:i])
+    return _models_cache
 MAX_SUMMARIES = int(os.environ.get("MAX_SUMMARIES", "8"))
 ELLIPSIS = re.compile(r"(\.\.\.|…)\s*$")
 
@@ -128,7 +153,7 @@ def summarize(name, item):
                "contents": [{"role": "user", "parts": [{"text": f"Gioco: {name}\nTitolo: {item.get('title')}\n\n{body}"}]}],
                "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2000}}
     errors = []
-    for model in GEMINI_MODELS:
+    for model in gemini_models():
         req = urllib.request.Request(f"{GEMINI_BASE}/{model}:generateContent", data=json.dumps(payload).encode("utf-8"), headers={
             "Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY, "User-Agent": "patch-radar/1.0"})
         try:
@@ -140,10 +165,10 @@ def summarize(name, item):
                 return "\n".join(l if l.startswith("•") else "• " + l.lstrip("-*• ") for l in lines)[:900]
             errors.append(f"{model}: risposta vuota")
         except urllib.error.HTTPError as e:
-            msg = e.read()[:200].decode("utf-8", "replace")
+            msg = e.read()[:400].decode("utf-8", "replace")
             if e.code == 429:
                 raise RateLimited(msg)
-            errors.append(f"{model} HTTP {e.code}: {msg}")
+            errors.append(f"{model} HTTP {e.code}: {msg[:150]}")
         except Exception as e:  # noqa
             errors.append(f"{model}: {e}")
     raise RuntimeError(" || ".join(errors))
@@ -198,7 +223,7 @@ def add_summaries(games, old):
                     print("  limite di richieste Gemini raggiunto: riprovo alla prossima esecuzione", file=sys.stderr)
                     use_ai = False
                 except Exception as e:  # noqa
-                    print(f"  riassunto Gemini non disponibile ({str(e)[:200]})", file=sys.stderr)
+                    print(f"  riassunto Gemini non disponibile ({str(e)[:700]})", file=sys.stderr)
                     use_ai = False
             if not text and not it.get("summary"):
                 try:
