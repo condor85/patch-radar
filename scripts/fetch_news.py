@@ -250,8 +250,8 @@ def add_summaries(games, old):
                 try:
                     text, src = summarize(g["name"], it), "ai"
                     time.sleep(7)  # il piano gratuito consente circa 10 richieste al minuto
-                except RateLimited:
-                    print("  limite di richieste Gemini raggiunto: riprovo alla prossima esecuzione", file=sys.stderr)
+                except RateLimited as e:
+                    print(f"  limite di richieste Gemini raggiunto, riprovo alla prossima esecuzione ({str(e)[:300]})", file=sys.stderr)
                     use_ai = False
                 except Exception as e:  # noqa
                     print(f"  riassunto Gemini non disponibile ({str(e)[:700]})", file=sys.stderr)
@@ -267,6 +267,9 @@ def add_summaries(games, old):
                 it["summary"], it["summary_src"] = text, src
 
 
+PATCH_RE = re.compile(r"patch|hotfix|hot fix|update|changelog|release notes|\bfix(es)?\b|\bv?\d+\.\d+|\bbuild \d+", re.I)
+
+
 def add_translations(games):
     """Traduce per intero in italiano (Gemini) le patch più recenti, poche per volta."""
     if not GEMINI_KEY:
@@ -276,13 +279,13 @@ def add_translations(games):
         for it in g["items"][:3]:
             if budget <= 0:
                 return
-            if it.get("it"):
+            if it.get("it") or not (PATCH_RE.search(it.get("title") or "") or "patchnotes" in (it.get("tags") or [])):
                 continue
             try:
                 tr = translate_item(g["name"], it)
                 time.sleep(7)
-            except RateLimited:
-                print("  limite Gemini raggiunto: le traduzioni continuano alla prossima esecuzione", file=sys.stderr)
+            except RateLimited as e:
+                print(f"  limite Gemini raggiunto: le traduzioni continuano alla prossima esecuzione ({str(e)[:300]})", file=sys.stderr)
                 return
             except Exception as e:  # noqa
                 print(f"  traduzione Gemini non riuscita ({str(e)[:200]})", file=sys.stderr)
