@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Scarica gli annunci Steam dei giochi, li salva in data/news.json e (opzionale) invia notifiche ntfy."""
-import json, os, re, sys, time, urllib.error, urllib.request
+import json, os, re, sys, time, urllib.error, urllib.parse, urllib.request
 
 API = os.environ.get("STEAM_API_BASE", "https://api.steampowered.com")
 STORE = os.environ.get("STEAM_STORE_BASE", "https://store.steampowered.com")
@@ -132,9 +132,35 @@ def summarize(name, item):
     return text[:900]
 
 
+def structured_lines(text):
+    t = re.sub(r"\[img[^\]]*\][\s\S]*?\[/img\]", "", text or "")
+    t = re.sub(r"\{STEAM_CLAN_(?:LOC_)?IMAGE\}\S*", "", t)
+    t = re.sub(r"\[\*\]", "\n• ", t)
+    t = re.sub(r"\[/?(?:h[1-6]|p|list|olist|quote|hr)[^\]]*\]", "\n", t)
+    t = re.sub(r"<br\s*/?>|</(?:p|div|li|h[1-6])>", "\n", t)
+    t = re.sub(r"\[/?[a-zA-Z][^\]]*\]|<[^>]+>", "", t)
+    return [re.sub(r"\s+", " ", l).strip() for l in t.split("\n") if l.strip()]
+
+
+def extractive_summary(item):
+    """Riassunto senza IA: introduzione + prime voci dell'elenco, poi tradotto in italiano."""
+    lines = structured_lines(item.get("contents"))
+    intro = next((l for l in lines if len(l) > 50 and not l.startswith("•")), "")
+    bullets = [l for l in lines if l.startswith("•") and len(l) > 18][:5]
+    parts = ([intro[:220]] if intro else []) + [b[:140] for b in bullets]
+    if not parts or sum(len(x) for x in parts) < 60:
+        return ""
+    body = urllib.parse.urlencode({"client": "gtx", "sl": "auto", "tl": "it", "dt": "t", "q": "\n".join(parts)}).encode()
+    raw = http("https://translate.googleapis.com/translate_a/single", data=body, retries=2)
+    out = "".join(x[0] or "" for x in json.loads(raw)[0]).strip()
+    out = "\n".join(("• " + l.lstrip("• ").strip()) for l in out.split("\n") if l.strip())
+    return out[:900]
+
+
 def add_summaries(games, old):
     """Riporta i riassunti già fatti e ne crea di nuovi per gli annunci più recenti."""
     budget = MAX_SUMMARIES
+    use_ai = None
     for g in games:
         prev = {str(i["gid"]): i for i in old.get(str(g["appid"]), {}).get("items", [])}
         for it in g["items"]:
@@ -146,14 +172,21 @@ def add_summaries(games, old):
             if budget <= 0 or it.get("summary"):
                 continue
             try:
-                text = summarize(g["name"], it)
+                text = "" if use_ai is False else summarize(g["name"], it)
             except Exception as e:  # noqa
-                print(f"  riassunto non disponibile ({e}); salto gli altri", file=sys.stderr)
-                return
+                print(f"  riassunto IA non disponibile, passo al metodo semplice ({str(e)[:150]})", file=sys.stderr)
+                use_ai = False
+                text = ""
+            if not text:
+                try:
+                    text = extractive_summary(it)
+                except Exception as e:  # noqa
+                    print(f"  riassunto semplice non disponibile ({e})", file=sys.stderr)
+                    return
             budget -= 1
             if text:
                 it["summary"] = text
-            time.sleep(4)
+            time.sleep(4 if use_ai is None else 1)
 
 
 def notify(name, item):
