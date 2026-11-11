@@ -18,7 +18,11 @@ NTFY_TOPIC = _topic()
 NTFY_URL = os.environ.get("NTFY_URL", "https://ntfy.sh")
 SITE_URL = os.environ.get("SITE_URL", "")
 OUT = "data/news.json"
-KEEP = ("gid", "title", "url", "contents", "date", "feedlabel", "feedname", "author")
+KEEP = ("gid", "title", "url", "contents", "date", "feedlabel", "feedname", "author", "tags")
+MODELS_TOKEN = os.environ.get("MODELS_TOKEN", "").strip()
+MODELS_URL = os.environ.get("MODELS_URL", "https://models.github.ai/inference/chat/completions")
+MODEL = os.environ.get("MODEL", "openai/gpt-4.1-mini")
+MAX_SUMMARIES = int(os.environ.get("MAX_SUMMARIES", "8"))
 ELLIPSIS = re.compile(r"(\.\.\.|…)\s*$")
 
 
@@ -92,11 +96,57 @@ def resolve_name(appid):
         return ""
 
 
+def clean(text):
+    t = re.sub(r"\[img[^\]]*\][\s\S]*?\[/img\]", "", text or "")
+    t = re.sub(r"\{STEAM_CLAN_(?:LOC_)?IMAGE\}\S*", "", t)
+    t = re.sub(r"\[/?[a-zA-Z*][^\]]*\]", " ", t)
+    t = re.sub(r"<[^>]+>", " ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def summarize(name, item):
+    """Riassunto in italiano con GitHub Models (gratuito con il token dell'Action). Ritorna "" se non disponibile."""
+    body = clean(item.get("contents"))[:12000]
+    if not MODELS_TOKEN or len(body) < 300:
+        return ""
+    payload = {"model": MODEL, "temperature": 0.2, "max_tokens": 400, "messages": [
+        {"role": "system", "content": "Sei un assistente che riassume in italiano le note di aggiornamento dei videogiochi. Rispondi SOLO con 3-5 punti elenco brevi (ognuno su una riga che inizia con «• »), con le novità o correzioni più importanti. Niente introduzioni né conclusioni. Se non sono note di aggiornamento ma un annuncio, riassumi l'annuncio in 2-3 punti."},
+        {"role": "user", "content": f"Gioco: {name}\nTitolo: {item.get('title')}\n\n{body}"}]}
+    raw = http(MODELS_URL, data=json.dumps(payload).encode("utf-8"),
+               headers={"Content-Type": "application/json", "Authorization": f"Bearer {MODELS_TOKEN}"}, retries=2)
+    text = json.loads(raw)["choices"][0]["message"]["content"].strip()
+    return text[:900]
+
+
+def add_summaries(games, old):
+    """Riporta i riassunti già fatti e ne crea di nuovi per gli annunci più recenti."""
+    budget = MAX_SUMMARIES
+    for g in games:
+        prev = {str(i["gid"]): i for i in old.get(str(g["appid"]), {}).get("items", [])}
+        for it in g["items"]:
+            p = prev.get(str(it["gid"]))
+            if p and p.get("summary"):
+                it["summary"] = p["summary"]
+    for g in games:
+        for it in g["items"][:6]:
+            if budget <= 0 or it.get("summary"):
+                continue
+            try:
+                text = summarize(g["name"], it)
+            except Exception as e:  # noqa
+                print(f"  riassunto non disponibile ({e}); salto gli altri", file=sys.stderr)
+                return
+            budget -= 1
+            if text:
+                it["summary"] = text
+            time.sleep(4)
+
+
 def notify(name, item):
     if not NTFY_TOPIC:
         return
     payload = {"topic": NTFY_TOPIC, "title": f"{name}: nuovo aggiornamento",
-               "message": item.get("title") or "Nuova pubblicazione su Steam", "tags": ["video_game"]}
+               "message": (item.get("title") or "Nuova pubblicazione su Steam") + ("\n" + item["summary"][:300] if item.get("summary") else ""), "tags": ["video_game"]}
     if SITE_URL:
         payload["click"] = SITE_URL
     try:
@@ -124,6 +174,7 @@ def main():
             print(f"{name}: ERRORE {e} (tengo i dati precedenti)", file=sys.stderr)
             items = old.get(key, {}).get("items", [])
         games.append({"appid": g["appid"], "name": name, "items": items})
+    add_summaries(games, old)
     changed = games != (pg if isinstance(pg, list) else None)
     if ok == 0:
         print("Nessun gioco aggiornato.", file=sys.stderr)

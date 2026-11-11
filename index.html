@@ -87,6 +87,21 @@ footer a{color:#a8c9e8}
 .manage{width:100%;margin-top:6px;border:1px dashed #39516b;background:transparent;color:var(--muted);border-radius:11px;padding:9px;font-size:12px;font-weight:650}
 .opt{display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid var(--line);font-size:15px}
 .opt input{width:20px;height:20px;accent-color:var(--accent)}
+.filters{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 2px 12px}
+.tgl{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:650;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:5px 11px;background:#111a24;cursor:pointer}
+.tgl input{accent-color:var(--accent);margin:0}
+.tgl.on{color:var(--accent);border-color:#385b7a}
+.sum{margin:0 0 10px;padding:9px 11px;border-radius:11px;background:#112233;border:1px solid #29425a;font-size:12.5px;color:#d3e6f7;white-space:pre-line;overflow-wrap:anywhere}
+.sum b{display:block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--accent);margin-bottom:3px}
+details.admin{margin-top:22px;border:1px solid var(--line);border-radius:12px;background:#111a24;padding:4px 14px}
+details.admin summary{cursor:pointer;padding:11px 0;font-weight:700;font-size:14px}
+.adm h4{margin:16px 0 6px;font-size:13px;color:var(--accent)}
+.adm p,.adm li{font-size:12.5px;color:var(--muted)}
+.adm input[type=text],.adm input[type=password],.adm input[type=search]{width:100%;background:#0c1118;color:var(--text);border:1px solid #39516b;border-radius:10px;padding:10px 12px;font:inherit;font-size:14px}
+.adm .row{display:flex;gap:8px;margin:8px 0;align-items:center}
+.adm .row .nm{flex:1;font-size:14px;overflow-wrap:anywhere}
+.adm .danger{border-color:#70463f;background:#2a1816}
+.adm .okmsg{color:var(--green)} .adm .errmsg{color:#ffd0c7}
 @media(max-width:560px){
  header{padding-left:13px;padding-right:13px}
  h1{font-size:18px}
@@ -127,6 +142,7 @@ footer a{color:#a8c9e8}
    <div><h2 id="gameTitle">Valheim</h2><p>Annunci e note di aggiornamento pubblicati su Steam</p></div>
    <div class="count" id="count">Caricamento…</div>
   </div>
+  <div class="filters"><label class="tgl" id="patchTgl"><input type="checkbox" id="onlyPatch"> Solo patch</label></div>
   <div class="banner" id="banner" hidden></div>
   <div class="status" id="status"><span class="spinner"></span>Sto recuperando le ultime note…</div>
   <div class="cards" id="cards"></div>
@@ -144,6 +160,7 @@ footer a{color:#a8c9e8}
   <h2>Giochi da mostrare</h2>
   <div class="v-note" style="margin:0 0 10px">La scelta vale solo su questo dispositivo. L'elenco dei giochi disponibili lo gestisce il proprietario dell'app.</div>
   <div id="mList"></div>
+  <details class="admin" id="adminDet"><summary>🔧 Amministratore</summary><div class="adm" id="adminBox"></div></details>
  </div></div>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -162,6 +179,16 @@ const DEFAULT_GAMES = [
  {appid: 892970, name: "Valheim"}, {appid: 1374490, name: "RuneScape: Dragonwilds"},
  {appid: 1203620, name: "Enshrouded"}, {appid: 3321460, name: "Crimson Desert"}
 ];
+const PATCH_KEY = "game_patch_radar_onlypatch_v1";
+let onlyPatch = false;
+function loadPatchPref() { try { onlyPatch = localStorage.getItem(PATCH_KEY) === "1"; } catch {} $("onlyPatch").checked = onlyPatch; $("patchTgl").classList.toggle("on", onlyPatch); }
+function isPatchItem(it) {
+ if ((it.tags || []).includes("patchnotes")) return true;
+ const t = (it.title || "").toLowerCase();
+ if (/patch|hotfix|hot fix|update|changelog|release notes|\bfix(es)?\b|\bv?\d+\.\d+|\bbuild \d+|aggiornamento/.test(t)) return true;
+ if (/\bsale\b|saldi|giveaway|livestream|\bstream\b|festival|discount|soundtrack|merch|wallpaper|contest|competition|spotlight|\bevent\b|meetup/.test(t)) return false;
+ return /patch notes|changelog|bug ?fix/.test((it.contents || "").toLowerCase().slice(0, 3000));
+}
 const HIDDEN_KEY = "game_patch_radar_hidden_v1";
 let GAMES = {};          // appid (stringa) -> {name, appid, store}
 let ORDER = [];           // ordine dei giochi (le chiavi numeriche di un oggetto verrebbero riordinate)
@@ -179,6 +206,19 @@ function ensureSelected() { const v = visibleKeys(); if (!v.includes(selected)) 
 function loadHidden() { try { hidden = JSON.parse(localStorage.getItem(HIDDEN_KEY) || "[]") || []; } catch { hidden = []; } }
 function saveHidden() { try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(hidden)); } catch {} }
 setGames(DEFAULT_GAMES);
+const PENDING_KEY = "game_patch_radar_pending_v1";
+let pending = {add: [], remove: []};
+function loadPending() { try { pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "null") || pending; } catch {} }
+function savePending() { try { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch {} }
+function applyPending(list) {
+ const now = Date.now(), has = new Set(list.map(g => String(g.appid)));
+ pending.add = (pending.add || []).filter(g => now - g.ts < 20 * 60000 && !has.has(String(g.appid)));
+ pending.remove = (pending.remove || []).filter(g => now - g.ts < 20 * 60000 && has.has(String(g.id)));
+ savePending();
+ const gone = new Set(pending.remove.map(g => String(g.id)));
+ return list.filter(g => !gone.has(String(g.appid))).concat(pending.add.map(g => ({appid: g.appid, name: g.name})));
+}
+function currentList() { return ORDER.map(k => ({appid: GAMES[k].appid, name: GAMES[k].name})); }
 const STORE_KEY = "game_patch_radar_v3";
 const REFRESH_MS = 30 * 60 * 1000;
 const PREVIEW_CHARS = 700;
@@ -497,7 +537,9 @@ function renderViewer() {
  const h = document.createElement("h2"); h.textContent = (tr ? tr.title : item.title) || "Aggiornamento";
  const t = document.createElement("div"); t.className = "v-text";
  t.textContent = (tr ? tr.text : fullText(item)) || "Apri la pubblicazione per leggere tutti i dettagli.";
- inner.append(date, h, t);
+ inner.append(date, h);
+ if (item.summary) { const sm = document.createElement("div"); sm.className = "sum"; const lb = document.createElement("b"); lb.textContent = "📝 In breve"; sm.append(lb, document.createTextNode(item.summary)); inner.append(sm); }
+ inner.append(t);
  if (item.truncated) inner.append(warnEl());
  if (tr) { const n = document.createElement("div"); n.className = "v-note"; n.textContent = "Traduzione automatica (Google Translate) — può contenere imprecisioni."; inner.append(n); }
  $("vTr").disabled = false;
@@ -507,6 +549,146 @@ function renderViewer() {
 $("vClose").addEventListener("click", closeViewer);
 $("vTr").addEventListener("click", () => toggleTranslate(viewerItem, $("vTr")));
 document.addEventListener("keydown", e => { if (e.key === "Escape") { closeViewer(); closeManager(); } });
+/* ---------- Amministratore: modifica l'elenco giochi dall'app (serve un token GitHub) ---------- */
+const ADMIN_KEY = "game_patch_radar_admin_v1";
+let CFG = {};
+let adminToken = "";
+function loadAdmin() { try { adminToken = localStorage.getItem(ADMIN_KEY) || ""; } catch {} }
+function repoName() {
+ if (CFG.repo) return CFG.repo;
+ const o = location.hostname.split(".")[0], r = location.pathname.split("/")[1];
+ return o && r ? o + "/" + r : "";
+}
+async function gh(path, opt = {}) {
+ const r = await fetch("https://api.github.com" + path, {...opt, headers: {Accept: "application/vnd.github+json", Authorization: "Bearer " + adminToken, "X-GitHub-Api-Version": "2022-11-28", ...(opt.headers || {})}});
+ if (!r.ok) {
+  let m = ""; try { m = (await r.json()).message; } catch {}
+  const e = new Error(r.status === 401 ? "Token non valido o scaduto." : (r.status === 403 || r.status === 404) ? "Il token non ha accesso a questo repository (serve il permesso «Contents: Read and write»)." : (m || "Errore GitHub " + r.status));
+  e.status = r.status; throw e;
+ }
+ return r.json();
+}
+const b64d = t => decodeURIComponent(escape(atob(t.replace(/\n/g, ""))));
+const b64e = t => btoa(unescape(encodeURIComponent(t)));
+async function editFile(path, mutate, msg) {
+ for (let i = 0; i < 2; i++) {
+  const f = await gh("/repos/" + repoName() + "/contents/" + path);
+  const out = mutate(JSON.parse(b64d(f.content)));
+  try {
+   await gh("/repos/" + repoName() + "/contents/" + path, {method: "PUT", body: JSON.stringify({message: msg, content: b64e(JSON.stringify(out, null, 2) + "\n"), sha: f.sha})});
+   return out;
+  } catch (e) { if ((e.status !== 409 && e.status !== 422) || i) throw e; }
+ }
+}
+function h(tag, props, ...kids) {
+ const el = document.createElement(tag);
+ for (const [k, v] of Object.entries(props || {})) { if (k === "class") el.className = v; else if (k.startsWith("on")) el.addEventListener(k.slice(2), v); else el.setAttribute(k, v); }
+ for (const kid of kids) el.append(kid && kid.nodeType ? kid : document.createTextNode(kid == null ? "" : kid));
+ return el;
+}
+function parseAppId(text) {
+ const m = String(text).match(/store\.steampowered\.com\/app\/(\d+)/i) || String(text).trim().match(/^(\d{2,9})$/);
+ return m ? Number(m[1]) : null;
+}
+async function searchGames(term) {
+ const d = await fetchJSON("https://store.steampowered.com/api/storesearch/?term=" + encodeURIComponent(term) + "&l=italian&cc=IT", x => Array.isArray(x && x.items));
+ return d.items.slice(0, 8).map(i => ({appid: i.id, name: i.name}));
+}
+async function nameOf(appid) {
+ try { const d = await fetchJSON("https://store.steampowered.com/api/appdetails?appids=" + appid + "&filters=basic", x => x && x[appid]); return d[appid].data.name || ""; } catch { return ""; }
+}
+function msgEl(box, text, ok) { let m = box.querySelector(".msg"); if (!m) { m = h("p", {class: "msg"}); box.prepend(m); } m.className = "msg " + (ok ? "okmsg" : "errmsg"); m.textContent = text; }
+function afterGamesChange() { ensureSelected(); render(); renderAdmin(); refreshAll(); }
+
+async function adminAdd(g) {
+ await editFile("games.json", o => { o.games = o.games || []; if (!o.games.some(x => Number(x.appid) === Number(g.appid))) o.games.push(g.name ? {appid: Number(g.appid), name: g.name} : {appid: Number(g.appid)}); return o; }, "Aggiungi " + (g.name || g.appid));
+ pending.add.push({appid: Number(g.appid), name: g.name || "", ts: Date.now()}); savePending();
+ setGames(applyPending(currentList()));
+ toast("✓ Gioco aggiunto. Per tutti gli altri compare in circa un minuto.");
+ afterGamesChange();
+}
+async function adminRemove(g) {
+ await editFile("games.json", o => { o.games = (o.games || []).filter(x => Number(x.appid) !== Number(g.appid)); return o; }, "Rimuovi " + g.name);
+ pending.remove.push({id: Number(g.appid), ts: Date.now()}); savePending();
+ setGames(applyPending(currentList()));
+ toast("✓ Gioco eliminato dall'app.");
+ afterGamesChange();
+}
+async function adminTopic() {
+ const arr = new Uint8Array(6); crypto.getRandomValues(arr);
+ const topic = "patch-radar-" + [...arr].map(b => b.toString(16).padStart(2, "0")).join("");
+ await editFile("config.json", o => { o.ntfyTopic = topic; return o; }, "Nuovo argomento notifiche");
+ CFG.ntfyTopic = topic; setTopicLink();
+ return topic;
+}
+async function renderAdmin() {
+ const box = $("adminBox"); box.innerHTML = "";
+ if (!adminToken) {
+  const inp = h("input", {type: "password", placeholder: "Incolla qui il token GitHub", autocomplete: "off"});
+  const go = h("button", {class: "abtn", type: "button", onclick: async () => {
+   adminToken = inp.value.trim(); if (!adminToken) return;
+   go.disabled = true;
+   try {
+    const r = await gh("/repos/" + repoName());
+    if (!r.permissions || !r.permissions.push) throw new Error("Questo token non può modificare il repository.");
+    try { localStorage.setItem(ADMIN_KEY, adminToken); } catch {}
+    renderAdmin();
+   } catch (e) { adminToken = ""; go.disabled = false; msgEl(box, e.message, false); }
+  }}, "Accedi");
+  box.append(
+   h("p", {}, "Per aggiungere o togliere giochi serve un token personale GitHub. Solo chi lo ha può modificare l'elenco. Lo crei una volta sola:"),
+   h("ol", {}, h("li", {}, "Apri ", h("a", {href: "https://github.com/settings/personal-access-tokens/new", target: "_blank", rel: "noopener noreferrer", style: "color:var(--accent)"}, "github.com/settings/personal-access-tokens/new")),
+    h("li", {}, "Nome a piacere, scadenza «No expiration» (o la più lunga)."),
+    h("li", {}, "Repository access → Only select repositories → scegli «" + (repoName().split("/")[1] || "patch-radar") + "»."),
+    h("li", {}, "Permissions → Repository permissions → Contents: «Read and write»."),
+    h("li", {}, "Generate token, copialo e incollalo qui sotto.")),
+   inp, h("div", {class: "row"}, go),
+   h("p", {}, "Il token resta salvato solo su questo dispositivo."));
+  return;
+ }
+ box.append(h("p", {}, "Connesso al repository " + repoName() + "."));
+ box.append(h("h4", {}, "Giochi dell'app (per tutti)"));
+ for (const g of currentList()) {
+  box.append(h("div", {class: "row"}, h("span", {class: "nm"}, g.name),
+   h("button", {class: "abtn danger", type: "button", onclick: async e => {
+    if (!confirm("Eliminare «" + g.name + "» dall'app per tutti?")) return;
+    e.target.disabled = true;
+    try { await adminRemove(g); } catch (err) { e.target.disabled = false; msgEl(box, err.message, false); }
+   }}, "🗑 Elimina")));
+ }
+ box.append(h("h4", {}, "Aggiungi un gioco"));
+ const q = h("input", {type: "search", placeholder: "Nome del gioco o link Steam", autocomplete: "off"});
+ const res = h("div", {});
+ const addBtn = async g => {
+  try { if (!g.name) g.name = await nameOf(g.appid); await adminAdd(g); } catch (err) { msgEl(box, err.message, false); }
+ };
+ const doSearch = async () => {
+  const term = q.value.trim(); if (!term) return;
+  res.innerHTML = ""; res.append(h("p", {}, "Cerco…"));
+  const id = parseAppId(term);
+  if (id) { res.innerHTML = ""; res.append(h("div", {class: "row"}, h("span", {class: "nm"}, "App Steam n. " + id), h("button", {class: "abtn", type: "button", onclick: () => addBtn({appid: id, name: ""})}, "+ Aggiungi"))); return; }
+  try {
+   const list = await searchGames(term); res.innerHTML = "";
+   if (!list.length) res.append(h("p", {}, "Nessun risultato. Prova con un altro nome o incolla il link della pagina Steam del gioco."));
+   for (const g of list) {
+    const has = currentList().some(x => Number(x.appid) === Number(g.appid));
+    res.append(h("div", {class: "row"}, h("span", {class: "nm"}, g.name), has ? h("span", {}, "già presente") : h("button", {class: "abtn", type: "button", onclick: () => addBtn(g)}, "+ Aggiungi")));
+   }
+  } catch (err) { res.innerHTML = ""; res.append(h("p", {class: "errmsg"}, "Ricerca non disponibile ora. Incolla il link della pagina Steam del gioco (o il suo numero) e premi Cerca.")); }
+ };
+ q.addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
+ box.append(q, h("div", {class: "row"}, h("button", {class: "abtn", type: "button", onclick: doSearch}, "🔍 Cerca")), res);
+ box.append(h("h4", {}, "Notifiche"));
+ box.append(h("p", {}, "Se qualcuno manda messaggi falsi sull'argomento delle notifiche, creane uno nuovo: gli altri dovranno iscriversi di nuovo dal link in fondo alla pagina."));
+ box.append(h("div", {class: "row"}, h("button", {class: "abtn", type: "button", onclick: async e => {
+  if (!confirm("Creare un nuovo argomento? Le notifiche arriveranno solo a chi si iscrive di nuovo.")) return;
+  e.target.disabled = true;
+  try { const t = await adminTopic(); msgEl(box, "Nuovo argomento creato: " + t + ". Apri il link «Attiva le notifiche» in fondo alla pagina per iscriverti.", true); } catch (err) { msgEl(box, err.message, false); }
+  e.target.disabled = false;
+ }}, "🔄 Cambia argomento")));
+ box.append(h("div", {class: "row"}, h("button", {class: "abtn", type: "button", onclick: () => { adminToken = ""; try { localStorage.removeItem(ADMIN_KEY); } catch {} renderAdmin(); }}, "Esci dalla modalità amministratore")));
+}
+
 function openManager() {
  const box = $("mList"); box.innerHTML = "";
  for (const k of ORDER) {
@@ -521,6 +703,7 @@ function openManager() {
   l.append(c, document.createTextNode(GAMES[k].name)); box.append(l);
  }
  $("manager").classList.add("open");
+ renderAdmin();
 }
 function closeManager() { $("manager").classList.remove("open"); }
 $("manageBtn").addEventListener("click", openManager);
@@ -534,14 +717,16 @@ function mkBtn(label, fn) {
 function render() {
  const game = GAMES[selected];
  $("gameTitle").textContent = game.name;
- const items = cache[selected];
- if (items) viewed[selected] = true;
+ const allItems = cache[selected];
+ if (allItems) viewed[selected] = true;
  renderNav(); renderBanner(); updateTitle();
  $("cards").innerHTML = "";
- if (!items) { $("count").textContent = "In attesa dei dati"; return; }
- $("count").textContent = items.length + (items.length === 1 ? " pubblicazione" : " pubblicazioni");
+ if (!allItems) { $("count").textContent = "In attesa dei dati"; return; }
+ const total = allItems.length;
+ const items = allItems.filter(it => !onlyPatch || isPatchItem(it));
+ $("count").textContent = (onlyPatch ? items.length + " di " + total : total) + (total === 1 ? " pubblicazione" : " pubblicazioni");
  if (!items.length) {
-  $("cards").innerHTML = '<div class="empty">Non risultano annunci recenti per questo gioco.</div>';
+  $("cards").innerHTML = '<div class="empty">' + (onlyPatch && total ? "Nessuna patch tra gli annunci recenti: togli il filtro «Solo patch» per vederli tutti." : "Non risultano annunci recenti per questo gioco.") + '</div>';
   return;
  }
  for (const item of items) {
@@ -566,7 +751,8 @@ function render() {
   const link = document.createElement("a"); link.className = "more"; link.href = item.url || game.store;
   link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = "Apri su Steam ↗";
   actions.append(link);
-  article.append(top, title, summary);
+  if (item.summary) { const sm = document.createElement("div"); sm.className = "sum"; const lb = document.createElement("b"); lb.textContent = "📝 In breve"; sm.append(lb, document.createTextNode(item.summary)); article.append(top, title, sm, summary); }
+  else article.append(top, title, summary);
   if (item.truncated) article.append(warnEl());
   article.append(actions);
   $("cards").append(article);
@@ -588,7 +774,7 @@ async function refreshAll(manual = false) {
  btn.disabled = true; btn.textContent = "…";
  if (manual || !cache[selected]) setStatus("Recupero le ultime pubblicazioni…");
  snapshot = await loadSnapshot();
- if (snapshot && snapshot.games.length) { setGames(snapshot.games); save(); }
+ if (snapshot && snapshot.games.length) { setGames(applyPending(snapshot.games)); save(); }
  ensureSelected();
  const errors = await Promise.all(visibleKeys().map(loadGame));
  baselineSeen();
@@ -626,12 +812,21 @@ setInterval(() => { if (!document.hidden) refreshAll(); }, REFRESH_MS);
 load();
 loadSeen();
 loadHidden();
+loadPending();
+loadPatchPref();
+loadAdmin();
 ensureSelected();
 
 /* ---------- Notifiche push (ntfy, web app) ---------- */
+function setTopicLink() { if (CFG.ntfyTopic) $("ntfyLink").href = "https://ntfy.sh/" + encodeURIComponent(CFG.ntfyTopic); }
 fetch("config.json", {cache: "no-store"}).then(r => r.ok ? r.json() : null).then(c => {
- if (c && c.ntfyTopic) $("ntfyLink").href = "https://ntfy.sh/" + encodeURIComponent(c.ntfyTopic);
+ if (c) { CFG = c; setTopicLink(); }
 }).catch(() => {});
+$("onlyPatch").addEventListener("change", e => {
+ onlyPatch = e.target.checked; $("patchTgl").classList.toggle("on", onlyPatch);
+ try { localStorage.setItem(PATCH_KEY, onlyPatch ? "1" : "0"); } catch {}
+ render();
+});
 
 /* ---------- Installazione come app (PWA) ---------- */
 let installEvt = null;
