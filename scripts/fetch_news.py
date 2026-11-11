@@ -112,18 +112,23 @@ def summarize(name, item):
     payload = {"model": MODEL, "temperature": 0.2, "max_tokens": 400, "messages": [
         {"role": "system", "content": "Sei un assistente che riassume in italiano le note di aggiornamento dei videogiochi. Rispondi SOLO con 3-5 punti elenco brevi (ognuno su una riga che inizia con «• »), con le novità o correzioni più importanti. Niente introduzioni né conclusioni. Se non sono note di aggiornamento ma un annuncio, riassumi l'annuncio in 2-3 punti."},
         {"role": "user", "content": f"Gioco: {name}\nTitolo: {item.get('title')}\n\n{body}"}]}
-    req = urllib.request.Request(MODELS_URL, data=json.dumps(payload).encode("utf-8"), headers={
-        "Content-Type": "application/json", "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28", "Authorization": f"Bearer {MODELS_TOKEN}", "User-Agent": "patch-radar/1.0"})
-    try:
-        with urllib.request.urlopen(req, timeout=60) as r:
-            raw, info = r.read(), f"HTTP {r.status} {r.geturl()} {r.headers.get('content-type')}"
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"HTTP {e.code}: {e.read()[:300].decode('utf-8', 'replace')}")
-    try:
-        text = json.loads(raw)["choices"][0]["message"]["content"].strip()
-    except Exception:
-        raise RuntimeError(info + " | corpo: " + (raw[:200].decode("utf-8", "replace") if raw else "vuoto"))
+    errors = []
+    text = ""
+    for url, model in ((MODELS_URL, MODEL), ("https://models.inference.ai.azure.com/chat/completions", "gpt-4o-mini")):
+        req = urllib.request.Request(url, data=json.dumps({**payload, "model": model}).encode("utf-8"), headers={
+            "Content-Type": "application/json", "Accept": "application/json",
+            "Authorization": f"Bearer {MODELS_TOKEN}", "User-Agent": "patch-radar/1.0"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                raw = r.read()
+            text = json.loads(raw)["choices"][0]["message"]["content"].strip()
+            break
+        except urllib.error.HTTPError as e:
+            errors.append(f"{url.split('/')[2]} HTTP {e.code}: {e.read()[:200].decode('utf-8', 'replace')}")
+        except Exception as e:  # noqa
+            errors.append(f"{url.split('/')[2]}: {e} {raw[:80] if 'raw' in dir() else ''}")
+    if not text:
+        raise RuntimeError(" || ".join(errors))
     return text[:900]
 
 
