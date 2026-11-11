@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c1118">
+<meta name="description" content="Note di aggiornamento dei tuoi giochi Steam, con traduzione in italiano e avviso sui nuovi aggiornamenti.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Patch Radar">
+<title>Game Patch Radar</title>
+<style>
+:root{color-scheme:dark;--bg:#0c1118;--panel:#151d28;--panel2:#1b2633;--line:#2a3747;--muted:#9eacbd;--text:#edf3fa;--accent:#83c7ff;--green:#8fdbb2;--warn:#f2c879}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(ellipse at 20% 0%,#1a2a3b 0,transparent 42%),var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;min-height:100vh}
+header{padding:calc(18px + env(safe-area-inset-top)) 18px 15px;border-bottom:1px solid var(--line);background:#0c1118d9;position:sticky;top:0;z-index:5;backdrop-filter:blur(14px)}
+.headrow{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:1200px;margin:auto}
+h1{font-size:20px;line-height:1.2;margin:0;letter-spacing:.2px}
+.subtitle{font-size:12px;color:var(--muted);margin-top:5px}
+button{font:inherit;cursor:pointer}
+.refresh{border:1px solid #39516b;background:#1b2b3c;color:var(--text);border-radius:12px;padding:10px 13px;font-weight:650;white-space:nowrap}
+.refresh:disabled{opacity:.6;cursor:wait}
+.refresh:active,.game:active{transform:scale(.98)}
+main{max-width:1200px;margin:0 auto;padding:16px;display:grid;grid-template-columns:180px minmax(0,1fr);gap:16px}
+.sidebar{align-self:start;position:sticky;top:100px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:10px}
+.side-label{font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:var(--muted);padding:8px 9px 10px}
+.game{width:100%;display:flex;align-items:center;gap:9px;text-align:left;border:1px solid transparent;background:transparent;color:#c7d2df;border-radius:11px;padding:11px 9px;margin-bottom:4px;font-weight:650;font-size:13px}
+.game.active{background:#23364a;border-color:#385b7a;color:#fff}
+.game .dot{width:9px;height:9px;border-radius:50%;background:#75879a;flex:0 0 auto}
+.game.active .dot{background:var(--accent);box-shadow:0 0 12px #83c7ff88}
+.content{min-width:0}
+.game-head{display:flex;justify-content:space-between;align-items:end;gap:12px;margin:2px 2px 13px}
+.game-head h2{font-size:21px;margin:0}
+.game-head p{margin:4px 0 0;color:var(--muted);font-size:12px}
+.count{font-size:11px;color:var(--muted);white-space:nowrap}
+.status{border:1px solid var(--line);background:#111a24;border-radius:12px;padding:10px 12px;margin-bottom:12px;color:var(--muted);font-size:12px}
+.status.error{color:#ffd0c7;border-color:#70463f}
+.status.ok{color:var(--green)}
+.cards{display:grid;gap:11px}
+.card{background:linear-gradient(145deg,var(--panel),#121a24);border:1px solid var(--line);border-radius:15px;padding:15px;min-width:0}
+.card-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:7px}
+.date{font-size:11px;color:var(--muted)}
+.tag{font-size:10px;border:1px solid #3d566f;color:#b9dfff;border-radius:99px;padding:3px 8px;white-space:nowrap}
+.card h3{font-size:15px;line-height:1.35;margin:0 0 9px}
+.summary{font-size:13px;color:#c6d0dc;white-space:pre-line;overflow-wrap:anywhere}
+.warn{margin-top:10px;font-size:11px;color:var(--warn);border:1px solid #5c4d2a;background:#2a2412;border-radius:9px;padding:7px 10px}
+.more{display:inline-block;margin-top:12px;color:var(--accent);text-decoration:none;font-size:12px;font-weight:700}
+.more:hover{text-decoration:underline}
+.empty{padding:30px 16px;text-align:center;color:var(--muted);background:var(--panel);border:1px dashed var(--line);border-radius:15px}
+footer{max-width:1200px;margin:0 auto;padding:0 16px 28px;color:#77889b;font-size:11px}
+footer a{color:#a8c9e8}
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid #63778b;border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+.actions .more{margin-top:0}
+.abtn{border:1px solid #39516b;background:#1b2b3c;color:var(--text);border-radius:10px;padding:7px 11px;font-size:12px;font-weight:650}
+.abtn:disabled{opacity:.6;cursor:wait}
+.abtn:active{transform:scale(.97)}
+.viewer{position:fixed;inset:0;z-index:50;background:var(--bg);display:none;flex-direction:column}
+.viewer.open{display:flex}
+.v-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:calc(12px + env(safe-area-inset-top)) 16px 12px;border-bottom:1px solid var(--line);background:#0c1118}
+.v-bar .spacer{flex:1}
+.v-body{flex:1;overflow:auto;padding:18px 16px calc(28px + env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch}
+.v-inner{max-width:820px;margin:0 auto}
+.v-inner .date{display:block;margin-bottom:6px}
+.v-inner h2{font-size:22px;line-height:1.3;margin:0 0 14px}
+.v-text{font-size:15px;line-height:1.65;color:#d6dfe9;white-space:pre-wrap;overflow-wrap:anywhere}
+.v-note{font-size:11px;color:var(--muted);margin-top:18px}
+.game.has-new{background:#182c3f;border-color:#3f6e5c}
+.game.has-new .dot{background:var(--green);box-shadow:0 0 12px #8fdbb2aa;animation:pulse 1.8s ease-in-out infinite}
+.game.has-new.active{background:#23364a;border-color:#4a8a73}
+.newtxt{display:block;margin-top:3px;font-size:10px;font-weight:750;color:var(--green);letter-spacing:.2px;line-height:1.2}
+@keyframes pulse{50%{opacity:.45}}
+.tag.new{border-color:#3f6e5c;background:#17332a;color:var(--green);font-weight:800}
+.card.is-new{border-color:#3f6e5c;box-shadow:inset 3px 0 0 var(--green)}
+.banner{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;border:1px solid #3f6e5c;background:linear-gradient(145deg,#15302a,#112019);border-radius:14px;padding:11px 13px;margin-bottom:12px}
+.banner[hidden]{display:none}
+.banner .b-text{font-size:13px;font-weight:700;color:#d9f5e7;flex:1 1 220px}
+.banner .b-text small{display:block;font-weight:500;font-size:11px;color:var(--muted);margin-top:2px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;flex:1 1 100%}
+.chip{border:1px solid #3f6e5c;background:#17332a;color:var(--green);border-radius:99px;padding:5px 10px;font-size:12px;font-weight:700}
+.toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;pointer-events:none;background:#17332a;color:#d9f5e7;border:1px solid #3f6e5c;border-radius:12px;padding:10px 14px;font-size:13px;font-weight:650;z-index:60;transition:.3s;max-width:calc(100vw - 32px)}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+@media(max-width:560px){
+ header{padding-left:13px;padding-right:13px}
+ h1{font-size:18px}
+ main{padding:11px;grid-template-columns:106px minmax(0,1fr);gap:9px}
+ .sidebar{top:88px;padding:6px;border-radius:13px}
+ .side-label{font-size:9px;padding:7px 5px}
+ .game{display:block;text-align:left;font-size:11px;line-height:1.25;padding:10px 7px}
+ .game .dot{display:inline-block;margin-right:5px;width:7px;height:7px}
+ .game-head{display:block;margin-bottom:10px}
+ .game-head h2{font-size:17px}
+ .count{display:block;margin-top:4px}
+ .card{padding:12px}
+ .card h3{font-size:14px}
+ .summary{font-size:12px;line-height:1.45}
+ .refresh{padding:9px 10px;font-size:12px}
+ .subtitle{font-size:11px}
+}
+</style>
+</head>
+<body>
+<header>
+ <div class="headrow">
+  <div><h1>🎮 Game Patch Radar</h1><div class="subtitle">Le ultime novità dei tuoi giochi, in un unico posto</div></div>
+  <div style="display:flex;gap:8px;align-items:center">
+   <button class="refresh" id="installBtn" type="button" hidden>📲 Installa</button>
+   <button class="refresh" id="refreshBtn" type="button">↻ Aggiorna</button>
+  </div>
+ </div>
+</header>
+<main>
+ <nav class="sidebar" aria-label="Seleziona gioco">
+  <div class="side-label">I tuoi giochi</div>
+  <button class="game active" data-game="valheim"><span class="dot"></span>Valheim</button>
+  <button class="game" data-game="dragonwilds"><span class="dot"></span>RuneScape:<br> Dragonwilds</button>
+  <button class="game" data-game="enshrouded"><span class="dot"></span>Enshrouded</button>
+  <button class="game" data-game="crimson"><span class="dot"></span>Crimson Desert</button>
+ </nav>
+ <section class="content">
+  <div class="game-head">
+   <div><h2 id="gameTitle">Valheim</h2><p>Annunci e note di aggiornamento pubblicati su Steam</p></div>
+   <div class="count" id="count">Caricamento…</div>
+  </div>
+  <div class="banner" id="banner" hidden></div>
+  <div class="status" id="status"><span class="spinner"></span>Sto recuperando le ultime note…</div>
+  <div class="cards" id="cards"></div>
+ </section>
+</main>
+<footer>
+ I dati vengono recuperati dagli annunci Steam. La pagina si aggiorna all'apertura e poi ogni 30 minuti; gli ultimi dati restano salvati sul dispositivo.
+ <br><a id="ntfyLink" href="https://ntfy.sh/app" target="_blank" rel="noopener noreferrer">🔔 Attiva le notifiche sul telefono</a>
+ <br>Le schede mostrano un'anteprima: usa «Mostra tutto» o «Schermo intero» per leggere la nota completa.
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label="Note di rilascio a schermo intero">
+ <div class="v-bar">
+  <button class="abtn" id="vClose" type="button">✕ Chiudi</button>
+  <button class="abtn" id="vTr" type="button">🌐 Traduci in italiano</button>
+  <span class="spacer"></span>
+  <a class="more" id="vLink" target="_blank" rel="noopener noreferrer" style="margin:0">Apri su Steam ↗</a>
+ </div>
+ <div class="v-body"><div class="v-inner" id="vInner"></div></div>
+</div>
+
+<script>
+const GAMES = {
+ valheim: {name:"Valheim", appid:892970, store:"https://store.steampowered.com/app/892970/Valheim/"},
+ dragonwilds: {name:"RuneScape: Dragonwilds", appid:1374490, store:"https://store.steampowered.com/app/1374490/RuneScape_Dragonwilds/"},
+ enshrouded: {name:"Enshrouded", appid:1203620, store:"https://store.steampowered.com/app/1203620/Enshrouded/"},
+ crimson: {name:"Crimson Desert", appid:3321460, store:"https://store.steampowered.com/app/3321460/Crimson_Desert/"}
+};
+const STORE_KEY = "game_patch_radar_v3";
+const REFRESH_MS = 30 * 60 * 1000;
+const PREVIEW_CHARS = 700;
+const ELLIPSIS = /(\.\.\.|…)\s*$/;
+
+let selected = "valheim";
+let viewerItem = null;
+let lastRefresh = 0;
+const cache = {};      // gioco -> [annunci]
+const trCache = {};    // chiave annuncio -> {title, text}
+const showIt = {};     // chiave -> mostra italiano
+const expanded = {};   // chiave -> scheda espansa
+const $ = id => document.getElementById(id);
+
+/* ---------- Nuovi aggiornamenti: cosa hai già visto ---------- */
+const SEEN_KEY = "game_patch_radar_seen_v1";
+const navHTML = {};
+document.querySelectorAll(".game").forEach(b => navHTML[b.dataset.game] = b.innerHTML);
+let seen = {};          // gioco -> gid già visti
+let prevVisit = 0;      // ultima visita precedente (per il messaggio)
+let lastVisit = 0;
+let firstRun = false;
+let lastTotal = null;
+let autoPicked = false;
+let shownAt = Date.now();
+const viewed = {};
+function loadSeen() {
+ try { const d = JSON.parse(localStorage.getItem(SEEN_KEY) || "null"); if (d) { seen = d.seen || {}; lastVisit = prevVisit = d.lastVisit || 0; } } catch {}
+}
+function saveSeen() { try { localStorage.setItem(SEEN_KEY, JSON.stringify({seen, lastVisit})); } catch {} }
+function isNew(key, item) { return !!seen[key] && !seen[key].includes(String(item.gid)); }
+function newItems(key) { return (cache[key] || []).filter(it => isNew(key, it)); }
+function totalNew() { return Object.keys(GAMES).reduce((n, k) => n + newItems(k).length, 0); }
+function baselineSeen() {
+ const fresh = Object.keys(seen).length === 0;
+ let changed = false;
+ for (const k of Object.keys(GAMES)) {
+  if (!seen[k] && cache[k]) { seen[k] = cache[k].map(i => String(i.gid)); changed = true; }
+ }
+ if (changed && fresh) firstRun = true;
+ if (changed) saveSeen();
+}
+function markRead(key) {
+ if (!cache[key] || !seen[key]) return;
+ seen[key] = [...new Set([...cache[key].map(i => String(i.gid)), ...seen[key]])].slice(0, 80);
+ saveSeen();
+}
+function markAllRead() { Object.keys(GAMES).forEach(markRead); render(); updateTitle(); }
+function flush() {
+ if (Date.now() - shownAt > 5000 && viewed[selected]) markRead(selected);
+ lastVisit = Date.now(); saveSeen();
+}
+function updateTitle() {
+ const n = totalNew(); document.title = (n ? "(" + n + ") " : "") + "Game Patch Radar";
+ try { if (navigator.setAppBadge) (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {}); } catch {}
+}
+let toastTimer;
+function toast(msg) {
+ const t = $("toast"); t.textContent = msg; t.classList.add("show");
+ clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 7000);
+}
+function plural(n) { return n + (n === 1 ? " nuovo aggiornamento" : " nuovi aggiornamenti"); }
+function renderNav() {
+ document.querySelectorAll(".game").forEach(b => {
+  const k = b.dataset.game, n = newItems(k).length;
+  b.classList.toggle("active", k === selected);
+  b.classList.toggle("has-new", n > 0);
+  b.innerHTML = navHTML[k] + (n ? '<span class="newtxt">' + plural(n) + '</span>' : "");
+ });
+}
+function renderBanner() {
+ const el = $("banner");
+ const parts = Object.keys(GAMES).map(k => [k, newItems(k).length]).filter(x => x[1]);
+ if (!parts.length) { el.hidden = true; return; }
+ const total = parts.reduce((n, x) => n + x[1], 0);
+ el.hidden = false; el.innerHTML = "";
+ const t = document.createElement("div"); t.className = "b-text";
+ t.textContent = "🔔 " + plural(total) + (prevVisit ? " dall'ultima visita" : "");
+ if (prevVisit) {
+  const sm = document.createElement("small");
+  sm.textContent = "Ultima visita: " + new Intl.DateTimeFormat("it-IT", {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}).format(new Date(prevVisit));
+  t.append(sm);
+ }
+ const all = document.createElement("button"); all.type = "button"; all.className = "abtn"; all.textContent = "✓ Segna tutto come letto";
+ all.addEventListener("click", markAllRead);
+ const chips = document.createElement("div"); chips.className = "chips";
+ for (const [k, n] of parts) {
+  const c = document.createElement("button"); c.type = "button"; c.className = "chip"; c.textContent = GAMES[k].name + " · " + n;
+  c.addEventListener("click", () => selectGame(k)); chips.append(c);
+ }
+ el.append(t, all, chips);
+}
+function selectGame(k) {
+ if (k !== selected && viewed[selected]) markRead(selected);
+ selected = k; render();
+ if (cache[selected]) setStatus("Dati caricati · premi Aggiorna per verificare eventuali novità", "ok");
+ else refreshAll();
+}
+
+/* ---------- Salvataggio locale (opzionale, mai bloccante) ---------- */
+function save() {
+ try { localStorage.setItem(STORE_KEY, JSON.stringify({cache, trCache})); }
+ catch { try { localStorage.setItem(STORE_KEY, JSON.stringify({cache})); } catch {} }
+}
+function load() {
+ try {
+  const d = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
+  if (d) { Object.assign(cache, d.cache || {}); Object.assign(trCache, d.trCache || {}); }
+ } catch {}
+}
+
+/* ---------- Utilità ---------- */
+function setStatus(message, type="") {
+ $("status").className = "status " + type;
+ $("status").textContent = message;
+}
+function dateLabel(unix) {
+ try { return new Intl.DateTimeFormat("it-IT",{day:"2-digit",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}).format(new Date(unix*1000)); }
+ catch { return ""; }
+}
+function itemKey(item) { return String(item.gid || item.url || item.title) + ":" + (item.contents || "").length; }
+
+/* Converte il BBCode/HTML di Steam in testo semplice, senza perdere contenuto. */
+function plainText(input) {
+ if (!input) return "";
+ let s = String(input).replace(/\r/g, "");
+ s = s.replace(/\{STEAM_CLAN_(?:LOC_)?IMAGE\}\S*/g, "");
+ s = s.replace(/\[img[^\]]*\][\s\S]*?\[\/img\]/gi, "");
+ s = s.replace(/\[(?:previewyoutube|video|youtube)[^\]]*\][\s\S]*?\[\/(?:previewyoutube|video|youtube)\]/gi, "");
+ s = s.replace(/\[url=([^\]]*)\]([\s\S]*?)\[\/url\]/gi, (m, u, t) => t.trim() || u);
+ s = s.replace(/\[\/(?:h[1-6]|p)\]/gi, "\n\n");
+ s = s.replace(/\[(?:h[1-6]|p)(?:[= ][^\]]*)?\]/gi, "\n");
+ s = s.replace(/\[\*\]/g, "\n• ");
+ s = s.replace(/\[\/?(?:list|olist|quote|code|table|tr|hr)(?:[= ][^\]]*)?\]/gi, "\n");
+ s = s.replace(/\[\/?(?:b|i|u|strike|spoiler|noparse|url|td|th|expand|center|left|right)(?:[= ][^\]]*)?\]/gi, "");
+ s = s.replace(/<br\s*\/?>/gi, "\n").replace(/<\/(?:p|div|li|h[1-6]|tr)>/gi, "\n").replace(/<li[^>]*>/gi, "• ").replace(/<\/?[a-z][^>]*>/gi, "");
+ const ta = document.createElement("textarea"); ta.innerHTML = s; s = ta.value;
+ return s.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+function fullText(item) { return plainText(item.contents || ""); }
+function previewOf(text) {
+ if (text.length <= PREVIEW_CHARS) return text;
+ let cut = text.slice(0, PREVIEW_CHARS);
+ const i = cut.lastIndexOf("\n");
+ if (i > PREVIEW_CHARS * 0.5) cut = cut.slice(0, i);
+ return cut.trimEnd() + "…";
+}
+
+/* ---------- Rete: prova diretto e più proxy CORS, ricordando quello che funziona ---------- */
+const ROUTES = [
+ u => u,
+ u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
+ u => "https://proxy.cors.dev/" + u,
+ u => "https://corsproxy.io/?url=" + encodeURIComponent(u),
+ u => "https://api.codetabs.com/v1/proxy/?quest=" + encodeURIComponent(u)
+];
+let routePref = 0;
+async function fetchJSON(target, valid, timeout = 10000) {
+ let lastErr;
+ const order = ROUTES.map((_, i) => i).sort((a, b) => a === routePref ? -1 : b === routePref ? 1 : a - b);
+ for (const i of order) {
+  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), timeout);
+  try {
+   const r = await fetch(ROUTES[i](target), {signal: ctrl.signal, cache: "no-store"});
+   if (!r.ok) throw new Error("HTTP " + r.status);
+   const d = await r.json();
+   if (valid && !valid(d)) throw new Error("Risposta non valida");
+   routePref = i; return d;
+  } catch (e) { lastErr = e; }
+  finally { clearTimeout(timer); }
+ }
+ throw lastErr || new Error("Connessione non riuscita");
+}
+
+/* ---------- Dati dal server (GitHub Actions) ---------- */
+let snapshot = null;
+async function loadSnapshot() {
+ if (location.protocol === "file:") return null;
+ try {
+  const r = await fetch("data/news.json?t=" + Date.now(), {cache: "no-store"});
+  if (!r.ok) return null;
+  const d = await r.json();
+  return d && d.games ? d : null;
+ } catch { return null; }
+}
+function prepare(items) {
+ const list = items.map(it => ({...it}));
+ for (const it of list) it.truncated = ELLIPSIS.test((it.contents || "").trim());
+ return list;
+}
+
+/* ---------- Recupero annunci ---------- */
+async function enrichTruncated(game, items) {
+ if (!items.some(it => ELLIPSIS.test((it.contents || "").trim()))) return;
+ try {
+  const url = `https://store.steampowered.com/events/ajaxgetadjacentpartnerevents/?appid=${game.appid}&count_before=0&count_after=40&l=english`;
+  const d = await fetchJSON(url, x => Array.isArray(x?.events));
+  for (const it of items) {
+   if (!ELLIPSIS.test((it.contents || "").trim())) continue;
+   const ev = d.events.find(e => String(e.gid) === String(it.gid)
+     || String(e.announcement_body?.gid) === String(it.gid)
+     || (e.announcement_body?.headline || e.event_name) === it.title);
+   const body = ev?.announcement_body?.body;
+   if (body && body.length > (it.contents || "").length) { it.contents = body; it.recovered = true; }
+  }
+ } catch {}
+}
+async function getNews(game) {
+ const base = `https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${game.appid}&count=20&maxlength=0`;
+ const ok = d => Array.isArray(d?.appnews?.newsitems);
+ let items = (await fetchJSON(base + "&feeds=steam_community_announcements", ok)).appnews.newsitems;
+ if (!items.length) items = (await fetchJSON(base, ok)).appnews.newsitems;
+ items.sort((a, b) => b.date - a.date);
+ await enrichTruncated(game, items);
+ for (const it of items) it.truncated = !it.recovered && ELLIPSIS.test((it.contents || "").trim());
+ return items;
+}
+
+/* ---------- Traduzione (Google Translate gratuito, fallback MyMemory) ---------- */
+function splitChunks(text, max) {
+ const out = []; let cur = "";
+ const push = s => { if (s) out.push(s); };
+ for (const para of text.split("\n")) {
+  if (para.length > max) {
+   push(cur); cur = "";
+   let buf = "";
+   for (let s of para.split(/(?<=[.!?])\s+/)) {
+    while (s.length > max) { push(buf); buf = ""; push(s.slice(0, max)); s = s.slice(max); }
+    if ((buf ? buf.length + 1 : 0) + s.length > max) { push(buf); buf = s; }
+    else buf = buf ? buf + " " + s : s;
+   }
+   push(buf);
+   continue;
+  }
+  if (cur && (cur.length + 1 + para.length) > max) { push(cur); cur = para; }
+  else cur = cur ? cur + "\n" + para : para;
+ }
+ push(cur);
+ return out;
+}
+async function googleTranslate(text) {
+ const body = new URLSearchParams({client: "gtx", sl: "auto", tl: "it", dt: "t", q: text});
+ const r = await fetch("https://translate.googleapis.com/translate_a/single", {method: "POST", body});
+ if (!r.ok) throw new Error("Google HTTP " + r.status);
+ const data = await r.json();
+ if (!Array.isArray(data?.[0])) throw new Error("Risposta Google non valida");
+ return data[0].map(x => x[0] || "").join("");
+}
+async function myMemoryTranslate(text) {
+ const parts = splitChunks(text, 450), out = [];
+ for (const p of parts) {
+  const r = await fetch("https://api.mymemory.translated.net/get?langpair=" + encodeURIComponent("en|it") + "&q=" + encodeURIComponent(p));
+  if (!r.ok) throw new Error("MyMemory HTTP " + r.status);
+  const d = await r.json();
+  if (d.responseStatus && Number(d.responseStatus) !== 200) throw new Error(d.responseDetails || "MyMemory errore");
+  out.push(d.responseData.translatedText);
+ }
+ return out.join("\n");
+}
+async function translateChunk(text) {
+ if (!text.trim()) return text;
+ try { return await googleTranslate(text); }
+ catch { return await myMemoryTranslate(text); }
+}
+async function translateItem(item, onProgress) {
+ const key = itemKey(item);
+ if (trCache[key]) return trCache[key];
+ const chunks = splitChunks(fullText(item), 1800);
+ const out = new Array(chunks.length);
+ const total = chunks.length + 1; let next = 0, done = 0;
+ const tick = () => { done++; if (onProgress) onProgress(done / total); };
+ const titleP = translateChunk(item.title || "").then(t => { tick(); return t; });
+ const worker = async () => { while (next < chunks.length) { const i = next++; out[i] = await translateChunk(chunks[i]); tick(); } };
+ const [title] = await Promise.all([titleP, worker(), worker(), worker()]);
+ trCache[key] = {title, text: out.join("\n")};
+ save();
+ return trCache[key];
+}
+async function toggleTranslate(item, btn) {
+ const key = itemKey(item);
+ if (showIt[key]) { showIt[key] = false; refreshViews(); return; }
+ if (btn) { btn.disabled = true; btn.textContent = "⏳ Traduzione…"; }
+ try {
+  await translateItem(item, p => { if (btn) btn.textContent = "⏳ " + Math.round(p * 100) + "%"; });
+  showIt[key] = true;
+ } catch (e) {
+  setStatus("Traduzione non riuscita: " + e.message + ". Riprova tra poco.", "error");
+ }
+ refreshViews();
+}
+function refreshViews() { render(); if (viewerItem) renderViewer(); }
+
+/* ---------- Schermo intero ---------- */
+function openViewer(item) {
+ viewerItem = item; renderViewer();
+ $("viewer").classList.add("open"); document.body.style.overflow = "hidden";
+ document.querySelector(".v-body").scrollTop = 0;
+ $("vClose").focus();
+}
+function closeViewer() {
+ viewerItem = null; $("viewer").classList.remove("open"); document.body.style.overflow = "";
+}
+function warnEl() {
+ const w = document.createElement("div"); w.className = "warn";
+ w.textContent = "⚠ Il testo ricevuto da Steam potrebbe essere incompleto: apri la pubblicazione su Steam per leggerla tutta.";
+ return w;
+}
+function renderViewer() {
+ const item = viewerItem; if (!item) return;
+ const tr = showIt[itemKey(item)] && trCache[itemKey(item)];
+ const inner = $("vInner"); inner.innerHTML = "";
+ const date = document.createElement("span"); date.className = "date"; date.textContent = dateLabel(item.date);
+ const h = document.createElement("h2"); h.textContent = (tr ? tr.title : item.title) || "Aggiornamento";
+ const t = document.createElement("div"); t.className = "v-text";
+ t.textContent = (tr ? tr.text : fullText(item)) || "Apri la pubblicazione per leggere tutti i dettagli.";
+ inner.append(date, h, t);
+ if (item.truncated) inner.append(warnEl());
+ if (tr) { const n = document.createElement("div"); n.className = "v-note"; n.textContent = "Traduzione automatica (Google Translate) — può contenere imprecisioni."; inner.append(n); }
+ $("vTr").disabled = false;
+ $("vTr").textContent = tr ? "↩ Mostra originale" : "🌐 Traduci in italiano";
+ $("vLink").href = item.url || GAMES[selected].store;
+}
+$("vClose").addEventListener("click", closeViewer);
+$("vTr").addEventListener("click", () => toggleTranslate(viewerItem, $("vTr")));
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeViewer(); });
+
+/* ---------- Schede ---------- */
+function mkBtn(label, fn) {
+ const b = document.createElement("button"); b.type = "button"; b.className = "abtn"; b.textContent = label;
+ b.addEventListener("click", () => fn(b)); return b;
+}
+function render() {
+ const game = GAMES[selected];
+ $("gameTitle").textContent = game.name;
+ const items = cache[selected];
+ if (items) viewed[selected] = true;
+ renderNav(); renderBanner(); updateTitle();
+ $("cards").innerHTML = "";
+ if (!items) { $("count").textContent = "In attesa dei dati"; return; }
+ $("count").textContent = items.length + (items.length === 1 ? " pubblicazione" : " pubblicazioni");
+ if (!items.length) {
+  $("cards").innerHTML = '<div class="empty">Non risultano annunci recenti per questo gioco.</div>';
+  return;
+ }
+ for (const item of items) {
+  const key = itemKey(item);
+  const tr = showIt[key] && trCache[key];
+  const fresh = isNew(selected, item);
+  const article = document.createElement("article"); article.className = "card" + (fresh ? " is-new" : "");
+  const top = document.createElement("div"); top.className = "card-top";
+  const date = document.createElement("span"); date.className = "date"; date.textContent = dateLabel(item.date);
+  const tag = document.createElement("span"); tag.className = "tag"; tag.textContent = "STEAM";
+  if (fresh) { const nt = document.createElement("span"); nt.className = "tag new"; nt.textContent = "NUOVO"; top.append(date, nt); }
+  else top.append(date, tag);
+  const title = document.createElement("h3"); title.textContent = (tr ? tr.title : item.title) || "Aggiornamento";
+  const full = (tr ? tr.text : fullText(item)) || "Apri la pubblicazione per leggere tutti i dettagli.";
+  const isLong = full.length > PREVIEW_CHARS;
+  const summary = document.createElement("div"); summary.className = "summary";
+  summary.textContent = (isLong && !expanded[key]) ? previewOf(full) : full;
+  const actions = document.createElement("div"); actions.className = "actions";
+  if (isLong) actions.append(mkBtn(expanded[key] ? "▴ Riduci" : "▾ Mostra tutto", () => { expanded[key] = !expanded[key]; render(); }));
+  actions.append(mkBtn("⛶ Schermo intero", () => openViewer(item)));
+  actions.append(mkBtn(tr ? "↩ Mostra originale" : "🌐 Traduci in italiano", b => toggleTranslate(item, b)));
+  const link = document.createElement("a"); link.className = "more"; link.href = item.url || game.store;
+  link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = "Apri su Steam ↗";
+  actions.append(link);
+  article.append(top, title, summary);
+  if (item.truncated) article.append(warnEl());
+  article.append(actions);
+  $("cards").append(article);
+ }
+}
+
+/* ---------- Aggiornamento ---------- */
+async function loadGame(key) {
+ try {
+  const snap = snapshot && snapshot.games && snapshot.games[key];
+  cache[key] = snap && snap.length ? prepare(snap) : await getNews(GAMES[key]);
+  return null;
+ }
+ catch (e) { return e; }
+}
+async function refreshAll(manual = false) {
+ const btn = $("refreshBtn");
+ if (btn.disabled) return;
+ btn.disabled = true; btn.textContent = "…";
+ if (manual || !cache[selected]) setStatus("Recupero le ultime pubblicazioni…");
+ snapshot = await loadSnapshot();
+ const errors = await Promise.all(Object.keys(GAMES).map(loadGame));
+ baselineSeen();
+ const failedSelected = errors[Object.keys(GAMES).indexOf(selected)];
+ if (!failedSelected) {
+  lastRefresh = Date.now(); save();
+  setStatus("Ultimo controllo: " + new Date().toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"}) + " · fonte: Steam" + (snapshot ? " via GitHub" : ""), "ok");
+ } else if (cache[selected]) {
+  setStatus("Steam non risponde: mostro gli ultimi dati salvati. Premi «Aggiorna» per riprovare. (" + failedSelected.message + ")", "error");
+ } else {
+  const g = GAMES[selected];
+  setStatus("Non riesco a raggiungere Steam. Premi «Aggiorna» per riprovare. (" + failedSelected.message + ")", "error");
+  $("cards").innerHTML = `<div class="empty">Connessione non riuscita.<br><br><a style="color:var(--accent)" href="${g.store}" target="_blank" rel="noopener">Apri la pagina Steam di ${g.name} ↗</a></div>`;
+ }
+ if (!autoPicked) {
+  autoPicked = true;
+  if (!newItems(selected).length) { const k = Object.keys(GAMES).find(x => newItems(x).length); if (k) selected = k; }
+ }
+ const tot = totalNew();
+ if (lastTotal !== null && tot > lastTotal) toast("🔔 " + plural(tot - lastTotal) + "!");
+ lastTotal = tot;
+ if (firstRun && !failedSelected) { setStatus("Prima apertura: da ora ti segnalo i nuovi aggiornamenti dei tuoi giochi.", "ok"); firstRun = false; }
+ if (cache[selected]) refreshViews();
+ btn.disabled = false; btn.textContent = "↻ Aggiorna";
+}
+
+document.querySelectorAll(".game").forEach(b => b.addEventListener("click", () => selectGame(b.dataset.game)));
+$("refreshBtn").addEventListener("click", () => refreshAll(true));
+document.addEventListener("visibilitychange", () => {
+ if (document.hidden) flush();
+ else { shownAt = Date.now(); if (Date.now() - lastRefresh > REFRESH_MS) refreshAll(); }
+});
+window.addEventListener("pagehide", flush);
+setInterval(() => { if (!document.hidden) refreshAll(); }, REFRESH_MS);
+
+load();
+loadSeen();
+
+/* ---------- Notifiche push (ntfy, web app) ---------- */
+fetch("config.json", {cache: "no-store"}).then(r => r.ok ? r.json() : null).then(c => {
+ if (c && c.ntfyTopic) $("ntfyLink").href = "https://ntfy.sh/" + encodeURIComponent(c.ntfyTopic);
+}).catch(() => {});
+
+/* ---------- Installazione come app (PWA) ---------- */
+let installEvt = null;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; $("installBtn").hidden = false; });
+$("installBtn").addEventListener("click", async () => {
+ if (!installEvt) return;
+ installEvt.prompt();
+ try { await installEvt.userChoice; } catch {}
+ installEvt = null; $("installBtn").hidden = true;
+});
+window.addEventListener("appinstalled", () => { $("installBtn").hidden = true; toast("✓ App installata: la trovi nel Launcher"); });
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+ window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+if (cache[selected]) setStatus("Dati salvati · aggiornamento in corso…");
+render();
+refreshAll();
+</script>
+</body>
+</html>

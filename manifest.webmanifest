@@ -1,0 +1,19 @@
+{
+  "id": "./",
+  "name": "Game Patch Radar",
+  "short_name": "Patch Radar",
+  "description": "Le ultime note di aggiornamento dei tuoi giochi Steam, con traduzione in italiano.",
+  "lang": "it",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0c1118",
+  "theme_color": "#0c1118",
+  "categories": ["games", "news"],
+  "icons": [
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
