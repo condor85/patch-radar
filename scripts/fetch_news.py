@@ -113,8 +113,11 @@ def summarize(name, item):
         {"role": "system", "content": "Sei un assistente che riassume in italiano le note di aggiornamento dei videogiochi. Rispondi SOLO con 3-5 punti elenco brevi (ognuno su una riga che inizia con «• »), con le novità o correzioni più importanti. Niente introduzioni né conclusioni. Se non sono note di aggiornamento ma un annuncio, riassumi l'annuncio in 2-3 punti."},
         {"role": "user", "content": f"Gioco: {name}\nTitolo: {item.get('title')}\n\n{body}"}]}
     raw = http(MODELS_URL, data=json.dumps(payload).encode("utf-8"),
-               headers={"Content-Type": "application/json", "Authorization": f"Bearer {MODELS_TOKEN}"}, retries=2)
-    text = json.loads(raw)["choices"][0]["message"]["content"].strip()
+               headers={"Content-Type": "application/json", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "Authorization": f"Bearer {MODELS_TOKEN}"}, retries=2)
+    try:
+        text = json.loads(raw)["choices"][0]["message"]["content"].strip()
+    except Exception:
+        raise RuntimeError("risposta non valida: " + (raw[:200].decode("utf-8", "replace") if raw else "vuota"))
     return text[:900]
 
 
