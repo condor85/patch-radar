@@ -48,6 +48,7 @@ def gemini_models():
     _models_cache.extend(m for i, m in enumerate(chosen) if m and m not in chosen[:i])
     return _models_cache
 MAX_SUMMARIES = int(os.environ.get("MAX_SUMMARIES", "8"))
+TRANSLATE_BUDGET = int(os.environ.get("TRANSLATE_BUDGET", "3"))
 ELLIPSIS = re.compile(r"(\.\.\.|…)\s*$")
 
 
@@ -144,25 +145,21 @@ class RateLimited(Exception):
     pass
 
 
-def summarize(name, item):
-    """Riassunto in italiano con Gemini (piano gratuito di Google AI Studio). Ritorna "" se non disponibile."""
-    body = clean(item.get("contents"))[:30000]
-    if not GEMINI_KEY or len(body) < 300:
-        return ""
-    payload = {"systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-               "contents": [{"role": "user", "parts": [{"text": f"Gioco: {name}\nTitolo: {item.get('title')}\n\n{body}"}]}],
-               "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2000}}
+def gemini_call(system, user, max_tokens=2000, timeout=120):
+    """Una richiesta a Gemini (piano gratuito). Prova i modelli in ordine; alza RateLimited se la quota è finita."""
+    payload = {"systemInstruction": {"parts": [{"text": system}]},
+               "contents": [{"role": "user", "parts": [{"text": user}]}],
+               "generationConfig": {"temperature": 0.2, "maxOutputTokens": max_tokens}}
     errors = []
     for model in gemini_models():
         req = urllib.request.Request(f"{GEMINI_BASE}/{model}:generateContent", data=json.dumps(payload).encode("utf-8"), headers={
             "Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY, "User-Agent": "patch-radar/1.0"})
         try:
-            with urllib.request.urlopen(req, timeout=90) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 data = json.loads(r.read())
             text = "".join(p.get("text", "") for p in data["candidates"][0]["content"]["parts"]).strip()
             if text:
-                lines = [l.strip() for l in text.split("\n") if l.strip()]
-                return "\n".join(l if l.startswith("•") else "• " + l.lstrip("-*• ") for l in lines)[:900]
+                return text
             errors.append(f"{model}: risposta vuota")
         except urllib.error.HTTPError as e:
             msg = e.read()[:400].decode("utf-8", "replace")
@@ -174,10 +171,42 @@ def summarize(name, item):
     raise RuntimeError(" || ".join(errors))
 
 
+def summarize(name, item):
+    """Riassunto in italiano con Gemini. Ritorna "" se non disponibile."""
+    body = clean(item.get("contents"))[:30000]
+    if not GEMINI_KEY or len(body) < 300:
+        return ""
+    text = gemini_call(SYSTEM_PROMPT, f"Gioco: {name}\nTitolo: {item.get('title')}\n\n{body}")
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    return "\n".join(l if l.startswith("•") else "• " + l.lstrip("-*• ") for l in lines)[:900]
+
+
+TRANSLATE_PROMPT = """Sei un traduttore professionista di videogiochi. Traduci in italiano le note di aggiornamento che ricevi.
+
+Regole:
+- Prima riga della risposta: «TITOLO: » seguito dal titolo tradotto. Poi il testo tradotto.
+- Mantieni ESATTAMENTE la struttura: ogni riga che inizia con «# » (titolo di sezione) e ogni riga che inizia con «• » (elenco) deve restare tale, una per riga, nello stesso ordine.
+- Usa la terminologia italiana dei giocatori. Lascia in originale i nomi propri del gioco (oggetti, luoghi, personaggi, abilità, modalità) e i numeri di versione.
+- Non riassumere, non omettere nulla, non aggiungere commenti."""
+
+
+def translate_item(name, item):
+    """Traduzione completa in italiano con Gemini. Ritorna None se non disponibile."""
+    text = "\n".join(structured_lines(item.get("contents")))
+    if not GEMINI_KEY or len(text) < 80 or len(text) > 30000:
+        return None
+    out = gemini_call(TRANSLATE_PROMPT, f"Gioco: {name}\nTITOLO: {item.get('title')}\n\n{text}", max_tokens=16000, timeout=240)
+    title, _, body = out.partition("\n")
+    if not title.upper().startswith("TITOLO:") or len(body.strip()) < len(text) * 0.3:
+        raise RuntimeError("traduzione incompleta")
+    return {"title": title.split(":", 1)[1].strip(), "text": body.strip(), "src": "gemini"}
+
+
 def structured_lines(text):
     t = re.sub(r"\[img[^\]]*\][\s\S]*?\[/img\]", "", text or "")
     t = re.sub(r"\{STEAM_CLAN_(?:LOC_)?IMAGE\}\S*", "", t)
     t = re.sub(r"\[\*\]", "\n• ", t)
+    t = re.sub(r"\[h[1-6][^\]]*\]", "\n# ", t)
     t = re.sub(r"\[/?(?:h[1-6]|p|list|olist|quote|hr)[^\]]*\]", "\n", t)
     t = re.sub(r"<br\s*/?>|</(?:p|div|li|h[1-6])>", "\n", t)
     t = re.sub(r"\[/?[a-zA-Z][^\]]*\]|<[^>]+>", "", t)
@@ -187,7 +216,7 @@ def structured_lines(text):
 def extractive_summary(item):
     """Riassunto senza IA: introduzione + prime voci dell'elenco, poi tradotto in italiano."""
     lines = structured_lines(item.get("contents"))
-    intro = next((l for l in lines if len(l) > 50 and not l.startswith("•")), "")
+    intro = next((l for l in lines if len(l) > 50 and not l.startswith(("•", "#"))), "")
     bullets = [l for l in lines if l.startswith("•") and len(l) > 18][:5]
     parts = ([intro[:220]] if intro else []) + [b[:140] for b in bullets]
     if not parts or sum(len(x) for x in parts) < 60:
@@ -208,6 +237,8 @@ def add_summaries(games, old):
             p = prev.get(str(it["gid"]))
             if p and p.get("summary"):
                 it["summary"], it["summary_src"] = p["summary"], p.get("summary_src", "simple")
+            if p and p.get("it"):
+                it["it"] = p["it"]
     for g in games:
         for it in g["items"][:6]:
             if budget <= 0:
@@ -236,17 +267,46 @@ def add_summaries(games, old):
                 it["summary"], it["summary_src"] = text, src
 
 
-def notify(name, item):
+def add_translations(games):
+    """Traduce per intero in italiano (Gemini) le patch più recenti, poche per volta."""
+    if not GEMINI_KEY:
+        return
+    budget = TRANSLATE_BUDGET
+    for g in games:
+        for it in g["items"][:3]:
+            if budget <= 0:
+                return
+            if it.get("it"):
+                continue
+            try:
+                tr = translate_item(g["name"], it)
+                time.sleep(7)
+            except RateLimited:
+                print("  limite Gemini raggiunto: le traduzioni continuano alla prossima esecuzione", file=sys.stderr)
+                return
+            except Exception as e:  # noqa
+                print(f"  traduzione Gemini non riuscita ({str(e)[:200]})", file=sys.stderr)
+                budget -= 1
+                continue
+            budget -= 1
+            if tr:
+                it["it"] = tr
+
+
+def notify(name, item, appid=None):
     if not NTFY_TOPIC:
         return
-    payload = {"topic": NTFY_TOPIC, "title": f"{name}: nuovo aggiornamento",
+    payload = {"title": f"{name}: nuovo aggiornamento",
                "message": (item.get("title") or "Nuova pubblicazione su Steam") + ("\n" + item["summary"][:300] if item.get("summary") else ""), "tags": ["video_game"]}
     if SITE_URL:
         payload["click"] = SITE_URL
-    try:
-        http(NTFY_URL, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"}, retries=2)
-    except Exception as e:  # noqa
-        print(f"  notifica non inviata: {e}", file=sys.stderr)
+    # un canale per tutti i giochi e uno per ogni gioco: ognuno si iscrive a quello che preferisce
+    topics = [NTFY_TOPIC] + ([f"{NTFY_TOPIC}-{appid}"] if appid else [])
+    for topic in topics:
+        try:
+            http(NTFY_URL, data=json.dumps({**payload, "topic": topic}).encode("utf-8"), headers={"Content-Type": "application/json"}, retries=2)
+        except Exception as e:  # noqa
+            print(f"  notifica non inviata ({topic}): {e}", file=sys.stderr)
 
 
 def main():
@@ -269,20 +329,21 @@ def main():
             items = old.get(key, {}).get("items", [])
         games.append({"appid": g["appid"], "name": name, "items": items})
     add_summaries(games, old)
+    for g in games:
+        o = old.get(str(g["appid"]))
+        if not o or not o.get("items"):
+            continue  # gioco nuovo o prima raccolta: nessuna notifica
+        known = {str(i["gid"]) for i in o["items"]}
+        fresh = [i for i in g["items"] if str(i["gid"]) not in known]
+        for it in fresh[:5]:
+            print(f"NUOVO {g['name']}: {it.get('title')}")
+            notify(g["name"], it, g["appid"])
+    add_translations(games)
     changed = games != (pg if isinstance(pg, list) else None)
     if ok == 0:
         print("Nessun gioco aggiornato.", file=sys.stderr)
         changed = False
     if changed:
-        for g in games:
-            o = old.get(str(g["appid"]))
-            if not o or not o.get("items"):
-                continue  # gioco nuovo o prima raccolta: nessuna notifica
-            known = {str(i["gid"]) for i in o["items"]}
-            fresh = [i for i in g["items"] if str(i["gid"]) not in known]
-            for it in fresh[:5]:
-                print(f"NUOVO {g['name']}: {it.get('title')}")
-                notify(g["name"], it)
         os.makedirs("data", exist_ok=True)
         with open(OUT, "w", encoding="utf-8") as f:
             json.dump({"updated": int(time.time()), "games": games}, f, ensure_ascii=False, separators=(",", ":"))
