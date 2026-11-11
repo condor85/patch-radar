@@ -19,9 +19,9 @@ NTFY_URL = os.environ.get("NTFY_URL", "https://ntfy.sh")
 SITE_URL = os.environ.get("SITE_URL", "")
 OUT = "data/news.json"
 KEEP = ("gid", "title", "url", "contents", "date", "feedlabel", "feedname", "author", "tags")
-MODELS_TOKEN = os.environ.get("MODELS_TOKEN", "").strip()
-MODELS_URL = os.environ.get("MODELS_URL", "https://models.github.ai/inference/chat/completions")
-MODEL = os.environ.get("MODEL", "openai/gpt-4.1-mini")
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+GEMINI_BASE = os.environ.get("GEMINI_BASE", "https://generativelanguage.googleapis.com/v1beta/models")
+GEMINI_MODELS = [m for m in (os.environ.get("GEMINI_MODEL", "").strip(), "gemini-2.5-flash", "gemini-flash-latest") if m]
 MAX_SUMMARIES = int(os.environ.get("MAX_SUMMARIES", "8"))
 ELLIPSIS = re.compile(r"(\.\.\.|…)\s*$")
 
@@ -104,32 +104,49 @@ def clean(text):
     return re.sub(r"\s+", " ", t).strip()
 
 
+SYSTEM_PROMPT = """Sei un redattore italiano di notizie sui videogiochi. Ricevi le note di aggiornamento (patch notes) o un annuncio di un gioco e scrivi un riassunto per un giocatore che ha poco tempo.
+
+Regole:
+- Scrivi SOLO in italiano, in modo chiaro e naturale.
+- Da 3 a 5 punti, ognuno su una riga che inizia con "• ", massimo 20 parole ciascuno.
+- Ordine di importanza: nuovi contenuti e funzioni, poi bilanciamento e cambiamenti al gameplay, poi prestazioni, infine correzioni di bug (raggruppa i bug fix in un solo punto, indicando di che tipo sono).
+- Mantieni in originale i nomi propri del gioco (oggetti, luoghi, personaggi, modalità).
+- Non inventare nulla che non sia nel testo. Non aggiungere introduzioni, conclusioni, titoli o emoji.
+- Se il testo non è una patch ma un annuncio (evento, saldi, stream, anteprima), riassumilo in 1-2 punti e comincia il primo con «Annuncio: »."""
+
+
+class RateLimited(Exception):
+    pass
+
+
 def summarize(name, item):
-    """Riassunto in italiano con GitHub Models (gratuito con il token dell'Action). Ritorna "" se non disponibile."""
-    body = clean(item.get("contents"))[:12000]
-    if not MODELS_TOKEN or len(body) < 300:
+    """Riassunto in italiano con Gemini (piano gratuito di Google AI Studio). Ritorna "" se non disponibile."""
+    body = clean(item.get("contents"))[:30000]
+    if not GEMINI_KEY or len(body) < 300:
         return ""
-    payload = {"model": MODEL, "temperature": 0.2, "max_tokens": 400, "messages": [
-        {"role": "system", "content": "Sei un assistente che riassume in italiano le note di aggiornamento dei videogiochi. Rispondi SOLO con 3-5 punti elenco brevi (ognuno su una riga che inizia con «• »), con le novità o correzioni più importanti. Niente introduzioni né conclusioni. Se non sono note di aggiornamento ma un annuncio, riassumi l'annuncio in 2-3 punti."},
-        {"role": "user", "content": f"Gioco: {name}\nTitolo: {item.get('title')}\n\n{body}"}]}
+    payload = {"systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+               "contents": [{"role": "user", "parts": [{"text": f"Gioco: {name}\nTitolo: {item.get('title')}\n\n{body}"}]}],
+               "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2000}}
     errors = []
-    text = ""
-    for url, model in ((MODELS_URL, MODEL), ("https://models.inference.ai.azure.com/chat/completions", "gpt-4o-mini")):
-        req = urllib.request.Request(url, data=json.dumps({**payload, "model": model}).encode("utf-8"), headers={
-            "Content-Type": "application/json", "Accept": "application/json",
-            "Authorization": f"Bearer {MODELS_TOKEN}", "User-Agent": "patch-radar/1.0"})
+    for model in GEMINI_MODELS:
+        req = urllib.request.Request(f"{GEMINI_BASE}/{model}:generateContent", data=json.dumps(payload).encode("utf-8"), headers={
+            "Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY, "User-Agent": "patch-radar/1.0"})
         try:
-            with urllib.request.urlopen(req, timeout=60) as r:
-                raw = r.read()
-            text = json.loads(raw)["choices"][0]["message"]["content"].strip()
-            break
+            with urllib.request.urlopen(req, timeout=90) as r:
+                data = json.loads(r.read())
+            text = "".join(p.get("text", "") for p in data["candidates"][0]["content"]["parts"]).strip()
+            if text:
+                lines = [l.strip() for l in text.split("\n") if l.strip()]
+                return "\n".join(l if l.startswith("•") else "• " + l.lstrip("-*• ") for l in lines)[:900]
+            errors.append(f"{model}: risposta vuota")
         except urllib.error.HTTPError as e:
-            errors.append(f"{url.split('/')[2]} HTTP {e.code}: {e.read()[:200].decode('utf-8', 'replace')}")
+            msg = e.read()[:200].decode("utf-8", "replace")
+            if e.code == 429:
+                raise RateLimited(msg)
+            errors.append(f"{model} HTTP {e.code}: {msg}")
         except Exception as e:  # noqa
-            errors.append(f"{url.split('/')[2]}: {e} {raw[:80] if 'raw' in dir() else ''}")
-    if not text:
-        raise RuntimeError(" || ".join(errors))
-    return text[:900]
+            errors.append(f"{model}: {e}")
+    raise RuntimeError(" || ".join(errors))
 
 
 def structured_lines(text):
@@ -158,35 +175,40 @@ def extractive_summary(item):
 
 
 def add_summaries(games, old):
-    """Riporta i riassunti già fatti e ne crea di nuovi per gli annunci più recenti."""
-    budget = MAX_SUMMARIES
-    use_ai = None
+    """Riporta i riassunti già fatti e ne crea di nuovi (Gemini se c'è la chiave, altrimenti metodo semplice)."""
+    budget, use_ai = MAX_SUMMARIES, bool(GEMINI_KEY)
     for g in games:
         prev = {str(i["gid"]): i for i in old.get(str(g["appid"]), {}).get("items", [])}
         for it in g["items"]:
             p = prev.get(str(it["gid"]))
             if p and p.get("summary"):
-                it["summary"] = p["summary"]
+                it["summary"], it["summary_src"] = p["summary"], p.get("summary_src", "simple")
     for g in games:
         for it in g["items"][:6]:
-            if budget <= 0 or it.get("summary"):
+            if budget <= 0:
+                return
+            if it.get("summary") and (it.get("summary_src") == "ai" or not use_ai):
                 continue
-            try:
-                text = "" if use_ai is False else summarize(g["name"], it)
-            except Exception as e:  # noqa
-                print(f"  riassunto IA non disponibile, passo al metodo semplice ({str(e)[:150]})", file=sys.stderr)
-                use_ai = False
-                text = ""
-            if not text:
+            text, src = "", "simple"
+            if use_ai:
                 try:
-                    text = extractive_summary(it)
+                    text, src = summarize(g["name"], it), "ai"
+                    time.sleep(7)  # il piano gratuito consente circa 10 richieste al minuto
+                except RateLimited:
+                    print("  limite di richieste Gemini raggiunto: riprovo alla prossima esecuzione", file=sys.stderr)
+                    use_ai = False
+                except Exception as e:  # noqa
+                    print(f"  riassunto Gemini non disponibile ({str(e)[:200]})", file=sys.stderr)
+                    use_ai = False
+            if not text and not it.get("summary"):
+                try:
+                    text, src = extractive_summary(it), "simple"
                 except Exception as e:  # noqa
                     print(f"  riassunto semplice non disponibile ({e})", file=sys.stderr)
                     return
-            budget -= 1
             if text:
-                it["summary"] = text
-            time.sleep(4 if use_ai is None else 1)
+                budget -= 1
+                it["summary"], it["summary_src"] = text, src
 
 
 def notify(name, item):

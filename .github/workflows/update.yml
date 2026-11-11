@@ -12,7 +12,6 @@ permissions:
   contents: write
   pages: write
   id-token: write
-  models: read
 
 concurrency:
   group: patch-radar
@@ -33,7 +32,7 @@ jobs:
         id: fetch
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-          MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
         run: python3 scripts/fetch_news.py
 
