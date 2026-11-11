@@ -2,8 +2,6 @@
 """Scarica gli annunci Steam dei giochi, li salva in data/news.json e (opzionale) invia notifiche ntfy."""
 import json, os, re, sys, time, urllib.request
 
-GAMES = {"valheim": 892970, "dragonwilds": 1374490, "enshrouded": 1203620, "crimson": 3321460}
-NAMES = {"valheim": "Valheim", "dragonwilds": "RuneScape: Dragonwilds", "enshrouded": "Enshrouded", "crimson": "Crimson Desert"}
 API = os.environ.get("STEAM_API_BASE", "https://api.steampowered.com")
 STORE = os.environ.get("STEAM_STORE_BASE", "https://store.steampowered.com")
 def _topic():
@@ -69,10 +67,35 @@ def fetch_game(appid):
     return [{k: it.get(k) for k in KEEP} for it in items]
 
 
-def notify(game_key, item):
+def load_games():
+    """Legge games.json: [{"appid": 123, "name": "Facoltativo"}, ...]"""
+    data = json.load(open("games.json", encoding="utf-8"))
+    out, seen = [], set()
+    for g in data.get("games", []):
+        try:
+            appid = int(g["appid"])
+        except Exception:  # noqa
+            print(f"voce ignorata in games.json: {g}", file=sys.stderr)
+            continue
+        if appid in seen:
+            continue
+        seen.add(appid)
+        out.append({"appid": appid, "name": (g.get("name") or "").strip()})
+    return out
+
+
+def resolve_name(appid):
+    try:
+        d = get_json(f"{STORE}/api/appdetails?appids={appid}&filters=basic&l=english")
+        return d[str(appid)]["data"]["name"]
+    except Exception:  # noqa
+        return ""
+
+
+def notify(name, item):
     if not NTFY_TOPIC:
         return
-    payload = {"topic": NTFY_TOPIC, "title": f"{NAMES[game_key]}: nuovo aggiornamento",
+    payload = {"topic": NTFY_TOPIC, "title": f"{name}: nuovo aggiornamento",
                "message": item.get("title") or "Nuova pubblicazione su Steam", "tags": ["video_game"]}
     if SITE_URL:
         payload["click"] = SITE_URL
@@ -86,30 +109,35 @@ def main():
     try:
         prev = json.load(open(OUT, encoding="utf-8"))
     except Exception:
-        prev = {"games": {}}
-    old = prev.get("games", {})
-    games, ok = {}, 0
-    for key, appid in GAMES.items():
+        prev = {}
+    pg = prev.get("games")
+    old = {str(g["appid"]): g for g in pg if isinstance(g, dict)} if isinstance(pg, list) else {}
+    games, ok = [], 0
+    for g in load_games():
+        key = str(g["appid"])
+        name = g["name"] or old.get(key, {}).get("name") or resolve_name(g["appid"]) or f"Gioco {g['appid']}"
         try:
-            games[key] = fetch_game(appid)
+            items = fetch_game(g["appid"])
             ok += 1
-            print(f"{key}: {len(games[key])} annunci")
+            print(f"{name}: {len(items)} annunci")
         except Exception as e:  # noqa
-            print(f"{key}: ERRORE {e} (tengo i dati precedenti)", file=sys.stderr)
-            games[key] = old.get(key, [])
-    changed = games != old
+            print(f"{name}: ERRORE {e} (tengo i dati precedenti)", file=sys.stderr)
+            items = old.get(key, {}).get("items", [])
+        games.append({"appid": g["appid"], "name": name, "items": items})
+    changed = games != (pg if isinstance(pg, list) else None)
     if ok == 0:
         print("Nessun gioco aggiornato.", file=sys.stderr)
         changed = False
     if changed:
-        for key, items in games.items():
-            if key not in old or not old[key]:
-                continue  # prima raccolta: nessuna notifica
-            known = {str(i["gid"]) for i in old[key]}
-            fresh = [i for i in items if str(i["gid"]) not in known]
+        for g in games:
+            o = old.get(str(g["appid"]))
+            if not o or not o.get("items"):
+                continue  # gioco nuovo o prima raccolta: nessuna notifica
+            known = {str(i["gid"]) for i in o["items"]}
+            fresh = [i for i in g["items"] if str(i["gid"]) not in known]
             for it in fresh[:5]:
-                print(f"NUOVO {key}: {it.get('title')}")
-                notify(key, it)
+                print(f"NUOVO {g['name']}: {it.get('title')}")
+                notify(g["name"], it)
         os.makedirs("data", exist_ok=True)
         with open(OUT, "w", encoding="utf-8") as f:
             json.dump({"updated": int(time.time()), "games": games}, f, ensure_ascii=False, separators=(",", ":"))

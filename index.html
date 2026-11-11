@@ -84,6 +84,9 @@ footer a{color:#a8c9e8}
 .chip{border:1px solid #3f6e5c;background:#17332a;color:var(--green);border-radius:99px;padding:5px 10px;font-size:12px;font-weight:700}
 .toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;pointer-events:none;background:#17332a;color:#d9f5e7;border:1px solid #3f6e5c;border-radius:12px;padding:10px 14px;font-size:13px;font-weight:650;z-index:60;transition:.3s;max-width:calc(100vw - 32px)}
 .toast.show{opacity:1;transform:translate(-50%,0)}
+.manage{width:100%;margin-top:6px;border:1px dashed #39516b;background:transparent;color:var(--muted);border-radius:11px;padding:9px;font-size:12px;font-weight:650}
+.opt{display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid var(--line);font-size:15px}
+.opt input{width:20px;height:20px;accent-color:var(--accent)}
 @media(max-width:560px){
  header{padding-left:13px;padding-right:13px}
  h1{font-size:18px}
@@ -116,10 +119,8 @@ footer a{color:#a8c9e8}
 <main>
  <nav class="sidebar" aria-label="Seleziona gioco">
   <div class="side-label">I tuoi giochi</div>
-  <button class="game active" data-game="valheim"><span class="dot"></span>Valheim</button>
-  <button class="game" data-game="dragonwilds"><span class="dot"></span>RuneScape:<br> Dragonwilds</button>
-  <button class="game" data-game="enshrouded"><span class="dot"></span>Enshrouded</button>
-  <button class="game" data-game="crimson"><span class="dot"></span>Crimson Desert</button>
+  <div id="gameList"></div>
+  <button class="manage" id="manageBtn" type="button">⚙ Scegli giochi</button>
  </nav>
  <section class="content">
   <div class="game-head">
@@ -137,6 +138,14 @@ footer a{color:#a8c9e8}
  <br>Le schede mostrano un'anteprima: usa «Mostra tutto» o «Schermo intero» per leggere la nota completa.
 </footer>
 
+<div class="viewer" id="manager" role="dialog" aria-modal="true" aria-label="Scegli i giochi">
+ <div class="v-bar"><button class="abtn" id="mClose" type="button">✕ Chiudi</button></div>
+ <div class="v-body"><div class="v-inner">
+  <h2>Giochi da mostrare</h2>
+  <div class="v-note" style="margin:0 0 10px">La scelta vale solo su questo dispositivo. L'elenco dei giochi disponibili lo gestisce il proprietario dell'app.</div>
+  <div id="mList"></div>
+ </div></div>
+</div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label="Note di rilascio a schermo intero">
  <div class="v-bar">
@@ -149,18 +158,33 @@ footer a{color:#a8c9e8}
 </div>
 
 <script>
-const GAMES = {
- valheim: {name:"Valheim", appid:892970, store:"https://store.steampowered.com/app/892970/Valheim/"},
- dragonwilds: {name:"RuneScape: Dragonwilds", appid:1374490, store:"https://store.steampowered.com/app/1374490/RuneScape_Dragonwilds/"},
- enshrouded: {name:"Enshrouded", appid:1203620, store:"https://store.steampowered.com/app/1203620/Enshrouded/"},
- crimson: {name:"Crimson Desert", appid:3321460, store:"https://store.steampowered.com/app/3321460/Crimson_Desert/"}
-};
+const DEFAULT_GAMES = [
+ {appid: 892970, name: "Valheim"}, {appid: 1374490, name: "RuneScape: Dragonwilds"},
+ {appid: 1203620, name: "Enshrouded"}, {appid: 3321460, name: "Crimson Desert"}
+];
+const HIDDEN_KEY = "game_patch_radar_hidden_v1";
+let GAMES = {};          // appid (stringa) -> {name, appid, store}
+let ORDER = [];           // ordine dei giochi (le chiavi numeriche di un oggetto verrebbero riordinate)
+let hidden = [];         // giochi nascosti su questo dispositivo
+function setGames(list) {
+ const g = {};
+ for (const x of list) {
+  const k = String(x.appid);
+  g[k] = {name: x.name || ("Gioco " + k), appid: x.appid, store: "https://store.steampowered.com/app/" + x.appid + "/"};
+ }
+ GAMES = g; ORDER = list.map(x => String(x.appid)).filter((k, i, a) => a.indexOf(k) === i);
+}
+function visibleKeys() { const v = ORDER.filter(k => !hidden.includes(k)); return v.length ? v : ORDER; }
+function ensureSelected() { const v = visibleKeys(); if (!v.includes(selected)) selected = v[0]; }
+function loadHidden() { try { hidden = JSON.parse(localStorage.getItem(HIDDEN_KEY) || "[]") || []; } catch { hidden = []; } }
+function saveHidden() { try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(hidden)); } catch {} }
+setGames(DEFAULT_GAMES);
 const STORE_KEY = "game_patch_radar_v3";
 const REFRESH_MS = 30 * 60 * 1000;
 const PREVIEW_CHARS = 700;
 const ELLIPSIS = /(\.\.\.|…)\s*$/;
 
-let selected = "valheim";
+let selected = "892970";
 let viewerItem = null;
 let lastRefresh = 0;
 const cache = {};      // gioco -> [annunci]
@@ -171,8 +195,6 @@ const $ = id => document.getElementById(id);
 
 /* ---------- Nuovi aggiornamenti: cosa hai già visto ---------- */
 const SEEN_KEY = "game_patch_radar_seen_v1";
-const navHTML = {};
-document.querySelectorAll(".game").forEach(b => navHTML[b.dataset.game] = b.innerHTML);
 let seen = {};          // gioco -> gid già visti
 let prevVisit = 0;      // ultima visita precedente (per il messaggio)
 let lastVisit = 0;
@@ -187,11 +209,11 @@ function loadSeen() {
 function saveSeen() { try { localStorage.setItem(SEEN_KEY, JSON.stringify({seen, lastVisit})); } catch {} }
 function isNew(key, item) { return !!seen[key] && !seen[key].includes(String(item.gid)); }
 function newItems(key) { return (cache[key] || []).filter(it => isNew(key, it)); }
-function totalNew() { return Object.keys(GAMES).reduce((n, k) => n + newItems(k).length, 0); }
+function totalNew() { return visibleKeys().reduce((n, k) => n + newItems(k).length, 0); }
 function baselineSeen() {
  const fresh = Object.keys(seen).length === 0;
  let changed = false;
- for (const k of Object.keys(GAMES)) {
+ for (const k of ORDER) {
   if (!seen[k] && cache[k]) { seen[k] = cache[k].map(i => String(i.gid)); changed = true; }
  }
  if (changed && fresh) firstRun = true;
@@ -202,7 +224,7 @@ function markRead(key) {
  seen[key] = [...new Set([...cache[key].map(i => String(i.gid)), ...seen[key]])].slice(0, 80);
  saveSeen();
 }
-function markAllRead() { Object.keys(GAMES).forEach(markRead); render(); updateTitle(); }
+function markAllRead() { visibleKeys().forEach(markRead); render(); updateTitle(); }
 function flush() {
  if (Date.now() - shownAt > 5000 && viewed[selected]) markRead(selected);
  lastVisit = Date.now(); saveSeen();
@@ -218,16 +240,21 @@ function toast(msg) {
 }
 function plural(n) { return n + (n === 1 ? " nuovo aggiornamento" : " nuovi aggiornamenti"); }
 function renderNav() {
- document.querySelectorAll(".game").forEach(b => {
-  const k = b.dataset.game, n = newItems(k).length;
-  b.classList.toggle("active", k === selected);
-  b.classList.toggle("has-new", n > 0);
-  b.innerHTML = navHTML[k] + (n ? '<span class="newtxt">' + plural(n) + '</span>' : "");
- });
+ const list = $("gameList"); list.innerHTML = "";
+ for (const k of visibleKeys()) {
+  const n = newItems(k).length;
+  const b = document.createElement("button"); b.type = "button";
+  b.className = "game" + (k === selected ? " active" : "") + (n ? " has-new" : "");
+  const dot = document.createElement("span"); dot.className = "dot";
+  b.append(dot, document.createTextNode(GAMES[k].name));
+  if (n) { const t = document.createElement("span"); t.className = "newtxt"; t.textContent = plural(n); b.append(t); }
+  b.addEventListener("click", () => selectGame(k));
+  list.append(b);
+ }
 }
 function renderBanner() {
  const el = $("banner");
- const parts = Object.keys(GAMES).map(k => [k, newItems(k).length]).filter(x => x[1]);
+ const parts = visibleKeys().map(k => [k, newItems(k).length]).filter(x => x[1]);
  if (!parts.length) { el.hidden = true; return; }
  const total = parts.reduce((n, x) => n + x[1], 0);
  el.hidden = false; el.innerHTML = "";
@@ -256,13 +283,13 @@ function selectGame(k) {
 
 /* ---------- Salvataggio locale (opzionale, mai bloccante) ---------- */
 function save() {
- try { localStorage.setItem(STORE_KEY, JSON.stringify({cache, trCache})); }
- catch { try { localStorage.setItem(STORE_KEY, JSON.stringify({cache})); } catch {} }
+ try { localStorage.setItem(STORE_KEY, JSON.stringify({cache, trCache, games: Object.values(GAMES).map(g => ({appid: g.appid, name: g.name}))})); }
+ catch { try { localStorage.setItem(STORE_KEY, JSON.stringify({cache, games: Object.values(GAMES).map(g => ({appid: g.appid, name: g.name}))})); } catch {} }
 }
 function load() {
  try {
   const d = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
-  if (d) { Object.assign(cache, d.cache || {}); Object.assign(trCache, d.trCache || {}); }
+  if (d) { Object.assign(cache, d.cache || {}); Object.assign(trCache, d.trCache || {}); if (Array.isArray(d.games) && d.games.length) setGames(d.games); }
  } catch {}
 }
 
@@ -337,7 +364,7 @@ async function loadSnapshot() {
   const r = await fetch("data/news.json?t=" + Date.now(), {cache: "no-store"});
   if (!r.ok) return null;
   const d = await r.json();
-  return d && d.games ? d : null;
+  return d && Array.isArray(d.games) ? d : null;
  } catch { return null; }
 }
 function prepare(items) {
@@ -479,7 +506,25 @@ function renderViewer() {
 }
 $("vClose").addEventListener("click", closeViewer);
 $("vTr").addEventListener("click", () => toggleTranslate(viewerItem, $("vTr")));
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeViewer(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { closeViewer(); closeManager(); } });
+function openManager() {
+ const box = $("mList"); box.innerHTML = "";
+ for (const k of ORDER) {
+  const l = document.createElement("label"); l.className = "opt";
+  const c = document.createElement("input"); c.type = "checkbox"; c.checked = !hidden.includes(k);
+  c.addEventListener("change", () => {
+   hidden = c.checked ? hidden.filter(x => x !== k) : [...hidden, k];
+   if (ORDER.every(x => hidden.includes(x))) { hidden = hidden.filter(x => x !== k); c.checked = true; }
+   saveHidden(); ensureSelected(); render(); updateTitle();
+   if (c.checked && !cache[k]) refreshAll();
+  });
+  l.append(c, document.createTextNode(GAMES[k].name)); box.append(l);
+ }
+ $("manager").classList.add("open");
+}
+function closeManager() { $("manager").classList.remove("open"); }
+$("manageBtn").addEventListener("click", openManager);
+$("mClose").addEventListener("click", closeManager);
 
 /* ---------- Schede ---------- */
 function mkBtn(label, fn) {
@@ -531,8 +576,8 @@ function render() {
 /* ---------- Aggiornamento ---------- */
 async function loadGame(key) {
  try {
-  const snap = snapshot && snapshot.games && snapshot.games[key];
-  cache[key] = snap && snap.length ? prepare(snap) : await getNews(GAMES[key]);
+  const g = snapshot && snapshot.games.find(x => String(x.appid) === key);
+  cache[key] = g && g.items && g.items.length ? prepare(g.items) : await getNews(GAMES[key]);
   return null;
  }
  catch (e) { return e; }
@@ -543,9 +588,11 @@ async function refreshAll(manual = false) {
  btn.disabled = true; btn.textContent = "…";
  if (manual || !cache[selected]) setStatus("Recupero le ultime pubblicazioni…");
  snapshot = await loadSnapshot();
- const errors = await Promise.all(Object.keys(GAMES).map(loadGame));
+ if (snapshot && snapshot.games.length) { setGames(snapshot.games); save(); }
+ ensureSelected();
+ const errors = await Promise.all(visibleKeys().map(loadGame));
  baselineSeen();
- const failedSelected = errors[Object.keys(GAMES).indexOf(selected)];
+ const failedSelected = errors[visibleKeys().indexOf(selected)];
  if (!failedSelected) {
   lastRefresh = Date.now(); save();
   setStatus("Ultimo controllo: " + new Date().toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"}) + " · fonte: Steam" + (snapshot ? " via GitHub" : ""), "ok");
@@ -558,7 +605,7 @@ async function refreshAll(manual = false) {
  }
  if (!autoPicked) {
   autoPicked = true;
-  if (!newItems(selected).length) { const k = Object.keys(GAMES).find(x => newItems(x).length); if (k) selected = k; }
+  if (!newItems(selected).length) { const k = visibleKeys().find(x => newItems(x).length); if (k) selected = k; }
  }
  const tot = totalNew();
  if (lastTotal !== null && tot > lastTotal) toast("🔔 " + plural(tot - lastTotal) + "!");
@@ -568,7 +615,6 @@ async function refreshAll(manual = false) {
  btn.disabled = false; btn.textContent = "↻ Aggiorna";
 }
 
-document.querySelectorAll(".game").forEach(b => b.addEventListener("click", () => selectGame(b.dataset.game)));
 $("refreshBtn").addEventListener("click", () => refreshAll(true));
 document.addEventListener("visibilitychange", () => {
  if (document.hidden) flush();
@@ -579,6 +625,8 @@ setInterval(() => { if (!document.hidden) refreshAll(); }, REFRESH_MS);
 
 load();
 loadSeen();
+loadHidden();
+ensureSelected();
 
 /* ---------- Notifiche push (ntfy, web app) ---------- */
 fetch("config.json", {cache: "no-store"}).then(r => r.ok ? r.json() : null).then(c => {
