@@ -20,29 +20,8 @@
 html{overscroll-behavior-y:contain}
 *{box-sizing:border-box}
 body{margin:0;background:radial-gradient(ellipse at 20% 0%,var(--glow) 0,transparent 42%),var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;min-height:100vh}
-header{padding:calc(18px + env(safe-area-inset-top)) 18px 15px;border-bottom:1px solid var(--line);background:var(--bar);position:sticky;top:0;z-index:5;backdrop-filter:blur(14px)}
-.headrow{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:1200px;margin:auto}
-h1{font-size:20px;line-height:1.2;margin:0;letter-spacing:.2px}
-.subtitle{font-size:12px;color:var(--muted);margin-top:5px}
 button{font:inherit;cursor:pointer}
-.refresh{border:1px solid var(--btn-line);background:var(--btn-bg);color:var(--text);border-radius:12px;padding:10px 13px;font-weight:650;white-space:nowrap}
-.refresh:disabled{opacity:.6;cursor:wait}
-.refresh:active,.game:active{transform:scale(.98)}
-main{max-width:1200px;margin:0 auto;padding:16px;display:grid;grid-template-columns:180px minmax(0,1fr);gap:16px}
-.sidebar{align-self:start;position:sticky;top:100px;max-height:calc(100vh - 116px);overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:10px}
-.side-label{font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:var(--muted);padding:8px 9px 10px}
-.game{width:100%;display:block;text-align:left;border:1px solid transparent;background:transparent;color:var(--nav-text);border-radius:11px;padding:11px 9px;margin-bottom:4px;font-weight:650;font-size:13px}
-.game.active{background:var(--sel-bg);border-color:var(--sel-line);color:var(--text-strong)}
-.game .dot{width:9px;height:9px;border-radius:50%;background:var(--dot);display:inline-block;margin-right:7px;vertical-align:middle}
-.game.active .dot{background:var(--accent);box-shadow:0 0 12px #83c7ff88}
 .content{min-width:0}
-.game-head{display:flex;justify-content:space-between;align-items:end;gap:12px;margin:2px 2px 13px}
-.game-head h2{font-size:21px;margin:0}
-.game-head p{margin:4px 0 0;color:var(--muted);font-size:12px}
-.count{font-size:11px;color:var(--muted);white-space:nowrap}
-.status{border:1px solid var(--line);background:var(--soft);border-radius:12px;padding:10px 12px;margin-bottom:12px;color:var(--muted);font-size:12px}
-.status.error{color:var(--err);border-color:var(--err-line)}
-.status.ok{color:var(--green)}
 .cards{display:grid;gap:11px}
 .card{background:linear-gradient(145deg,var(--panel),var(--card2));border:1px solid var(--line);border-radius:15px;padding:15px;min-width:0}
 .card-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:7px}
@@ -73,10 +52,6 @@ footer a{color:var(--link)}
 .v-inner h2{font-size:22px;line-height:1.3;margin:0 0 14px}
 .v-text{font-size:15px;line-height:1.65;color:var(--rich-text);overflow-wrap:anywhere}
 .v-note{font-size:11px;color:var(--muted);margin-top:18px}
-.game.has-new{background:var(--new-bg);border-color:var(--green-line)}
-.game.has-new .dot{background:var(--green);box-shadow:0 0 12px #8fdbb2aa;animation:pulse 1.8s ease-in-out infinite}
-.game.has-new.active{background:var(--sel-bg);border-color:var(--new-line)}
-.newtxt{display:block;margin-top:3px;font-size:10px;font-weight:750;color:var(--green);letter-spacing:.2px;line-height:1.2}
 @keyframes pulse{50%{opacity:.45}}
 .tag.new{border-color:var(--green-line);background:var(--green-bg);color:var(--green);font-weight:800}
 .card.is-new{border-color:var(--green-line);box-shadow:inset 3px 0 0 var(--green)}
@@ -89,9 +64,6 @@ footer a{color:var(--link)}
 .toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;pointer-events:none;background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-line);border-radius:12px;padding:10px 14px;font-size:13px;font-weight:650;z-index:60;transition:.3s;max-width:calc(100vw - 32px)}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .by{font-size:11px;font-weight:650;color:var(--muted);margin-left:6px;letter-spacing:.3px;white-space:nowrap}
-.gh-left{display:flex;align-items:center;gap:12px;min-width:0}
-.hcover{display:block;width:96px;height:45px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
-.game .cover{display:block;width:100%;aspect-ratio:460/215;object-fit:cover;border-radius:8px;margin-bottom:7px;background:var(--soft)}
 .rich h4{margin:12px 0 4px;font-size:14px;line-height:1.3;color:var(--accent)}
 .rich h4:first-child{margin-top:0}
 .rich p{margin:0 0 6px}
@@ -113,10 +85,8 @@ h3.sec{margin:22px 0 6px;font-size:15px}
 .nrow span{flex:1;overflow-wrap:anywhere}
 .nrow a{text-decoration:none}
 .ptr{position:fixed;top:calc(8px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:70;background:var(--panel);border:1px solid var(--line);color:var(--accent);border-radius:99px;padding:7px 14px;font-size:12px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .15s}
-.manage{width:100%;margin-top:6px;border:1px dashed var(--btn-line);background:transparent;color:var(--muted);border-radius:11px;padding:9px;font-size:12px;font-weight:650}
 .opt{display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid var(--line);font-size:15px}
 .opt input{width:20px;height:20px;accent-color:var(--accent)}
-.filters{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 2px 12px}
 .tgl{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:650;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:5px 11px;background:var(--soft);cursor:pointer}
 .tgl input{accent-color:var(--accent);margin:0}
 .tgl.on{color:var(--accent);border-color:var(--sel-line)}
@@ -131,50 +101,61 @@ details.admin summary{cursor:pointer;padding:11px 0;font-weight:700;font-size:14
 .adm .row .nm{flex:1;font-size:14px;overflow-wrap:anywhere}
 .adm .danger{border-color:var(--err-line);background:var(--err-bg)}
 .adm .okmsg{color:var(--green)} .adm .errmsg{color:var(--err)}
-@media(max-width:560px){
- header{padding-left:13px;padding-right:13px}
- h1{font-size:18px}
- main{padding:11px;grid-template-columns:106px minmax(0,1fr);gap:9px}
- .sidebar{top:88px;padding:6px;border-radius:13px}
- .side-label{font-size:9px;padding:7px 5px}
- .game{display:block;text-align:left;font-size:11px;line-height:1.25;padding:7px}
- .game .cover{margin-bottom:5px;border-radius:6px}
- .hcover{width:72px;height:34px;border-radius:6px}
- .by{display:block;margin:2px 0 0}
- .game .dot{display:inline-block;margin-right:5px;width:7px;height:7px}
- .game-head{display:block;margin-bottom:10px}
- .game-head h2{font-size:17px}
- .count{display:block;margin-top:4px}
+.top{position:sticky;top:0;z-index:5;background:var(--bar);backdrop-filter:blur(14px);border-bottom:1px solid var(--line);transition:transform .25s ease}
+.top.hide{transform:translateY(-100%)}
+.bar{max-width:880px;margin:0 auto;padding:calc(8px + env(safe-area-inset-top)) 12px 6px;display:flex;align-items:center;gap:8px}
+.brand{flex:1;min-width:0;display:flex;align-items:baseline;gap:7px;white-space:nowrap;overflow:hidden}
+.brand b{font-size:17px;letter-spacing:.2px}
+.brand .by{margin:0;font-size:10.5px}
+.tools{display:flex;gap:6px}
+button{font:inherit;cursor:pointer}
+.ibtn{width:36px;height:36px;border:1px solid var(--btn-line);background:var(--btn-bg);color:var(--text);border-radius:11px;font-size:16px;display:grid;place-items:center;padding:0}
+.ibtn[hidden]{display:none}
+.ibtn:disabled{opacity:.6;cursor:wait}
+.ibtn:active,.game:active{transform:scale(.96)}
+.tabs{max-width:880px;margin:0 auto;display:flex;gap:8px;overflow-x:auto;padding:2px 12px 10px;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.game{flex:0 0 auto;display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--panel);color:var(--nav-text);border-radius:12px;padding:4px 11px 4px 4px;font-weight:650;font-size:13px;white-space:nowrap}
+.game .cover{display:block;width:46px;height:22px;object-fit:cover;border-radius:7px;background:var(--soft);flex:0 0 auto}
+.game.active{background:var(--sel-bg);border-color:var(--sel-line);color:var(--text-strong)}
+.game.has-new:not(.active){border-color:var(--green-line)}
+.newtxt{font-size:10px;font-weight:800;color:var(--green);background:var(--green-bg);border:1px solid var(--green-line);border-radius:99px;padding:1px 7px}
+main{max-width:880px;margin:0 auto;padding:12px}
+.content{min-width:0}
+.game-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 2px 10px}
+.game-head h2{font-size:19px;line-height:1.2;margin:0}
+.count{font-size:11.5px;color:var(--muted);margin-top:1px}
+.status{margin:0 2px 9px;font-size:11px;color:var(--dim)}
+.status.error{border:1px solid var(--err-line);background:var(--err-bg);border-radius:12px;padding:9px 12px;color:var(--err);font-size:12px;margin:0 0 10px}
+.status.ok{color:var(--dim)}
+.cards{gap:10px}
+@media(max-width:480px){
+ .brand .full{display:none}
+ main{padding:10px}
  .card{padding:12px}
- .card h3{font-size:14px}
- .summary{font-size:12px;line-height:1.45}
- .refresh{padding:9px 10px;font-size:12px}
- .subtitle{font-size:11px}
+ .card h3{font-size:14.5px}
+ .game-head h2{font-size:18px}
 }
 </style>
 </head>
 <body>
-<header>
- <div class="headrow">
-  <div><h1>🎮 Game Patch Radar <span class="by">By Pugno</span></h1><div class="subtitle">Le ultime novità dei tuoi giochi, in un unico posto</div></div>
-  <div style="display:flex;gap:8px;align-items:center">
-   <button class="refresh" id="installBtn" type="button" hidden>📲 Installa</button>
-   <button class="refresh" id="refreshBtn" type="button">↻ Aggiorna</button>
+<header class="top" id="top">
+ <div class="bar">
+  <div class="brand"><span>🎮</span><b><span class="full">Game </span>Patch Radar</b><span class="by">By Pugno</span></div>
+  <div class="tools">
+   <button class="ibtn" id="installBtn" type="button" hidden aria-label="Installa l'app" title="Installa l'app">📲</button>
+   <button class="ibtn" id="refreshBtn" type="button" aria-label="Aggiorna" title="Aggiorna">↻</button>
+   <button class="ibtn" id="manageBtn" type="button" aria-label="Impostazioni" title="Giochi, notifiche e aspetto">⚙</button>
   </div>
  </div>
+ <nav class="tabs" id="gameList" aria-label="Seleziona gioco"></nav>
 </header>
 <main>
- <nav class="sidebar" aria-label="Seleziona gioco">
-  <div class="side-label">I tuoi giochi</div>
-  <div id="gameList"></div>
-  <button class="manage" id="manageBtn" type="button">⚙ Scegli giochi</button>
- </nav>
  <section class="content">
   <div class="game-head">
-   <div class="gh-left"><div id="headCoverBox"></div><div><h2 id="gameTitle">Valheim</h2><p>Annunci e note di aggiornamento pubblicati su Steam</p></div></div>
-   <div class="count" id="count">Caricamento…</div>
+   <div><h2 id="gameTitle">Valheim</h2><div class="count" id="count">Caricamento…</div></div>
+   <label class="tgl" id="patchTgl"><input type="checkbox" id="onlyPatch"> Solo patch</label>
   </div>
-  <div class="filters"><label class="tgl" id="patchTgl"><input type="checkbox" id="onlyPatch"> Solo patch</label></div>
   <div class="banner" id="banner" hidden></div>
   <div class="status" id="status"><span class="spinner"></span>Sto recuperando le ultime note…</div>
   <div class="cards" id="cards"></div>
@@ -323,12 +304,13 @@ function renderNav() {
   const n = newItems(k).length;
   const b = document.createElement("button"); b.type = "button";
   b.className = "game" + (k === selected ? " active" : "") + (n ? " has-new" : "");
-  const dot = document.createElement("span"); dot.className = "dot";
-  b.append(coverImg(GAMES[k].appid, "cover", GAMES[k].image), dot, document.createTextNode(GAMES[k].name));
-  if (n) { const t = document.createElement("span"); t.className = "newtxt"; t.textContent = plural(n); b.append(t); }
+  b.append(coverImg(GAMES[k].appid, "cover", GAMES[k].image), document.createTextNode(GAMES[k].name));
+  if (n) { const t = document.createElement("span"); t.className = "newtxt"; t.textContent = n + (n === 1 ? " nuovo" : " nuovi"); b.append(t); }
   b.addEventListener("click", () => selectGame(k));
   list.append(b);
  }
+ const act = list.querySelector(".active");
+ if (act) list.scrollLeft = act.offsetLeft - (list.clientWidth - act.offsetWidth) / 2;
 }
 function renderBanner() {
  const el = $("banner");
@@ -798,8 +780,7 @@ function render() {
  const allItems = cache[selected];
  if (allItems) viewed[selected] = true;
  renderNav(); renderBanner(); updateTitle();
- const hb = $("headCoverBox");
- if (hb.dataset.k !== selected) { hb.dataset.k = selected; hb.innerHTML = ""; hb.append(coverImg(game.appid, "hcover", game.image)); }
+
  $("cards").innerHTML = "";
  if (!allItems) { $("count").textContent = "In attesa dei dati"; return; }
  const total = allItems.length;
@@ -879,7 +860,7 @@ async function refreshAll(manual = false) {
  lastTotal = tot;
  if (firstRun && !failedSelected) { setStatus("Prima apertura: da ora ti segnalo i nuovi aggiornamenti dei tuoi giochi.", "ok"); firstRun = false; }
  if (cache[selected]) refreshViews();
- btn.disabled = false; btn.textContent = "↻ Aggiorna";
+ btn.disabled = false; btn.textContent = "↻";
 }
 
 $("refreshBtn").addEventListener("click", () => refreshAll(true));
@@ -999,6 +980,17 @@ function renderTheme() {
  }
 }
 applyTheme(currentTheme());
+
+/* ---------- La barra in alto si nasconde scorrendo verso il basso ---------- */
+(() => {
+ const top = $("top"); let last = 0;
+ window.addEventListener("scroll", () => {
+  const y = window.scrollY;
+  if (y > last + 8 && y > 90) top.classList.add("hide");
+  else if (y < last - 8 || y < 60) top.classList.remove("hide");
+  last = y;
+ }, {passive: true});
+})();
 
 /* ---------- Trascina per aggiornare ---------- */
 (() => {
