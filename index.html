@@ -100,6 +100,15 @@ footer a{color:var(--link)}
 .abtn.on{border-color:var(--accent);color:var(--accent)}
 .row-btns{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}
 h3.sec{margin:22px 0 6px;font-size:15px}
+.sw{position:relative;display:inline-block;width:48px;height:28px;flex:0 0 auto}
+.sw input{opacity:0;position:absolute;inset:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:1}
+.sw i{position:absolute;inset:0;background:var(--btn-line);border-radius:28px;transition:.2s}
+.sw i::before{content:"";position:absolute;width:22px;height:22px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px #0004}
+.sw input:checked + i{background:var(--green)}
+.sw input:checked + i::before{transform:translateX(20px)}
+.sw input:disabled + i{opacity:.5}
+.nstat{font-size:12px;margin:8px 0 2px}
+.nrow.big{font-weight:700;font-size:15px}
 .nrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
 .nrow span{flex:1;overflow-wrap:anywhere}
 .nrow a{text-decoration:none}
@@ -173,7 +182,7 @@ details.admin summary{cursor:pointer;padding:11px 0;font-weight:700;font-size:14
 </main>
 <footer>
  I dati vengono recuperati dagli annunci Steam. La pagina si aggiorna all'apertura e poi ogni 30 minuti; gli ultimi dati restano salvati sul dispositivo.
- <br><a id="ntfyLink" href="#">🔔 Notifiche sul telefono (anche per singolo gioco)</a>
+ <br><a id="ntfyLink" href="#">🔔 Gestisci le notifiche</a>
  <br>Le schede mostrano un'anteprima: usa «Mostra tutto» o «Schermo intero» per leggere la nota completa.
  <br>Game Patch Radar · By Pugno
 </footer>
@@ -184,8 +193,7 @@ details.admin summary{cursor:pointer;padding:11px 0;font-weight:700;font-size:14
   <h2>Giochi da mostrare</h2>
   <div class="v-note" style="margin:0 0 10px">La scelta vale solo su questo dispositivo. L'elenco dei giochi disponibili lo gestisce il proprietario dell'app.</div>
   <div id="mList"></div>
-  <h3 class="sec" id="nSection">🔔 Notifiche sul telefono</h3>
-  <div class="v-note" style="margin:0 0 6px">Apri il link del gioco e premi «Subscribe» (consenti le notifiche del browser). Scegli «Tutti i giochi» oppure solo quelli che vuoi, non entrambi: arriverebbero doppie.</div>
+  <h3 class="sec" id="nSection">🔔 Notifiche</h3>
   <div id="nList"></div>
   <h3 class="sec">🎨 Aspetto</h3>
   <div class="row-btns" id="themeRow"></div>
@@ -227,7 +235,7 @@ function setGames(list) {
  const g = {};
  for (const x of list) {
   const k = String(x.appid);
-  g[k] = {name: x.name || ("Gioco " + k), appid: x.appid, store: "https://store.steampowered.com/app/" + x.appid + "/"};
+  g[k] = {name: x.name || ("Gioco " + k), appid: x.appid, image: x.image || "", store: "https://store.steampowered.com/app/" + x.appid + "/"};
  }
  GAMES = g; ORDER = list.map(x => String(x.appid)).filter((k, i, a) => a.indexOf(k) === i);
 }
@@ -246,9 +254,9 @@ function applyPending(list) {
  pending.remove = (pending.remove || []).filter(g => now - g.ts < 20 * 60000 && has.has(String(g.id)));
  savePending();
  const gone = new Set(pending.remove.map(g => String(g.id)));
- return list.filter(g => !gone.has(String(g.appid))).concat(pending.add.map(g => ({appid: g.appid, name: g.name})));
+ return list.filter(g => !gone.has(String(g.appid))).concat(pending.add.map(g => ({appid: g.appid, name: g.name, image: ""})));
 }
-function currentList() { return ORDER.map(k => ({appid: GAMES[k].appid, name: GAMES[k].name})); }
+function currentList() { return ORDER.map(k => ({appid: GAMES[k].appid, name: GAMES[k].name, image: GAMES[k].image})); }
 const STORE_KEY = "game_patch_radar_v3";
 const REFRESH_MS = 30 * 60 * 1000;
 const PREVIEW_CHARS = 700;
@@ -316,7 +324,7 @@ function renderNav() {
   const b = document.createElement("button"); b.type = "button";
   b.className = "game" + (k === selected ? " active" : "") + (n ? " has-new" : "");
   const dot = document.createElement("span"); dot.className = "dot";
-  b.append(coverImg(GAMES[k].appid, "cover"), dot, document.createTextNode(GAMES[k].name));
+  b.append(coverImg(GAMES[k].appid, "cover", GAMES[k].image), dot, document.createTextNode(GAMES[k].name));
   if (n) { const t = document.createElement("span"); t.className = "newtxt"; t.textContent = plural(n); b.append(t); }
   b.addEventListener("click", () => selectGame(k));
   list.append(b);
@@ -355,7 +363,7 @@ function selectGame(k) {
 function persistable() {
  const c = {}; for (const [k, v] of Object.entries(cache)) c[k] = v.map(({it, ...r}) => r);
  const tc = {}; for (const [k, v] of Object.entries(trCache)) if (v.src !== "gemini") tc[k] = v;
- return {cache: c, trCache: tc, games: Object.values(GAMES).map(g => ({appid: g.appid, name: g.name}))};
+ return {cache: c, trCache: tc, games: Object.values(GAMES).map(g => ({appid: g.appid, name: g.name, image: g.image}))};
 }
 function save() {
  const d = persistable();
@@ -416,9 +424,9 @@ function renderRich(el, text) {
  }
 }
 function versionOf(title) { const m = /\bv?(\d+(?:\.\d+){1,3}[a-z]?)\b/i.exec(title || ""); return m ? m[1] : ""; }
-function coverImg(appid, cls) {
- const urls = ["https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/" + appid + "/header.jpg",
-  "https://cdn.cloudflare.steamstatic.com/steam/apps/" + appid + "/header.jpg", "https://cdn.akamai.steamstatic.com/steam/apps/" + appid + "/header.jpg"];
+function coverImg(appid, cls, image) {
+ const urls = (image ? [image] : []).concat(["https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/" + appid + "/header.jpg",
+  "https://cdn.cloudflare.steamstatic.com/steam/apps/" + appid + "/header.jpg", "https://cdn.akamai.steamstatic.com/steam/apps/" + appid + "/header.jpg"]);
  const img = document.createElement("img"); img.className = cls; img.alt = ""; img.loading = "lazy"; img.decoding = "async";
  let i = 0; img.src = urls[0];
  img.onerror = () => { i++; if (i < urls.length) img.src = urls[i]; else img.remove(); };
@@ -749,11 +757,11 @@ async function renderAdmin() {
  q.addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
  box.append(q, h("div", {class: "row"}, h("button", {class: "abtn", type: "button", onclick: doSearch}, "🔍 Cerca")), res);
  box.append(h("h4", {}, "Notifiche"));
- box.append(h("p", {}, "Se qualcuno manda messaggi falsi sull'argomento delle notifiche, creane uno nuovo: gli altri dovranno iscriversi di nuovo dal link in fondo alla pagina."));
+ box.append(h("p", {}, "Se qualcuno manda messaggi falsi sull'argomento delle notifiche, creane uno nuovo: gli altri passano al nuovo argomento da soli alla prossima apertura dell'app."));
  box.append(h("div", {class: "row"}, h("button", {class: "abtn", type: "button", onclick: async e => {
-  if (!confirm("Creare un nuovo argomento? Le notifiche arriveranno solo a chi si iscrive di nuovo.")) return;
+  if (!confirm("Creare un nuovo argomento? Gli altri passano al nuovo da soli alla prossima apertura dell'app.")) return;
   e.target.disabled = true;
-  try { const t = await adminTopic(); msgEl(box, "Nuovo argomento creato: " + t + ". Apri il link «Attiva le notifiche» in fondo alla pagina per iscriverti.", true); } catch (err) { msgEl(box, err.message, false); }
+  try { const t = await adminTopic(); msgEl(box, "Nuovo argomento creato. Le notifiche si aggiornano da sole.", true); } catch (err) { msgEl(box, err.message, false); }
   e.target.disabled = false;
  }}, "🔄 Cambia argomento")));
  box.append(h("div", {class: "row"}, h("button", {class: "abtn", type: "button", onclick: () => { adminToken = ""; try { localStorage.removeItem(ADMIN_KEY); } catch {} renderAdmin(); }}, "Esci dalla modalità amministratore")));
@@ -791,7 +799,7 @@ function render() {
  if (allItems) viewed[selected] = true;
  renderNav(); renderBanner(); updateTitle();
  const hb = $("headCoverBox");
- if (hb.dataset.k !== selected) { hb.dataset.k = selected; hb.innerHTML = ""; hb.append(coverImg(game.appid, "hcover")); }
+ if (hb.dataset.k !== selected) { hb.dataset.k = selected; hb.innerHTML = ""; hb.append(coverImg(game.appid, "hcover", game.image)); }
  $("cards").innerHTML = "";
  if (!allItems) { $("count").textContent = "In attesa dei dati"; return; }
  const total = allItems.length;
@@ -888,18 +896,87 @@ loadHidden();
 loadPending();
 loadPatchPref();
 loadAdmin();
+loadNotif();
 ensureSelected();
 
 /* ---------- Notifiche push (ntfy, web app) ---------- */
-function setTopicLink() { renderNotif(); }
+function setTopicLink() { renderNotif(); if (notifPref.on) syncNotif().catch(() => {}); }
+/* Notifiche push: l'app si iscrive da sola al servizio gratuito ntfy.sh (Web Push), senza installare altre app. */
+const NOTIF_KEY = "game_patch_radar_notif_v1";
+const NTFY = "https://ntfy.sh";
+let notifPref = {on: false, off: []};   // off = giochi a cui NON vuole essere avvisato
+let notifMsg = null;
+function loadNotif() { try { const d = JSON.parse(localStorage.getItem(NOTIF_KEY) || "null"); if (d) notifPref = {on: !!d.on, off: d.off || []}; } catch {} }
+function saveNotif() { try { localStorage.setItem(NOTIF_KEY, JSON.stringify(notifPref)); } catch {} }
+function notifSupported() { return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && location.protocol !== "file:"; }
+function b64u(t) { const pad = "=".repeat((4 - t.length % 4) % 4); return Uint8Array.from(atob((t + pad).replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0)); }
+async function pushSub(create) {
+ const reg = await navigator.serviceWorker.ready;
+ let sub = await reg.pushManager.getSubscription();
+ if (!sub && create) {
+  const r = await fetch(NTFY + "/v1/config"); const cfg = await r.json();
+  if (!cfg.web_push_public_key) throw new Error("Il servizio notifiche non è disponibile ora");
+  sub = await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: b64u(cfg.web_push_public_key)});
+ }
+ return sub;
+}
+/* Allinea il servizio con le scelte fatte (si richiama a ogni apertura per tenere valida l'iscrizione). */
+async function syncNotif() {
+ if (!notifSupported()) return;
+ const sub = await pushSub(notifPref.on);
+ if (!notifPref.on) {
+  if (sub) {
+   try { await fetch(NTFY + "/v1/webpush", {method: "DELETE", headers: {"Content-Type": "application/json"}, body: JSON.stringify({endpoint: sub.endpoint})}); } catch {}
+   try { await sub.unsubscribe(); } catch {}
+  }
+  return;
+ }
+ if (!CFG.ntfyTopic) throw new Error("Notifiche non ancora configurate");
+ const j = sub.toJSON();
+ const topics = ORDER.filter(k => !notifPref.off.includes(k)).map(k => CFG.ntfyTopic + "-" + GAMES[k].appid);
+ const r = await fetch(NTFY + "/v1/webpush", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({endpoint: j.endpoint, auth: j.keys.auth, p256dh: j.keys.p256dh, topics})});
+ if (!r.ok) throw new Error("Il servizio notifiche ha risposto " + r.status);
+}
+async function setMaster(on) {
+ notifMsg = null;
+ if (on) {
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") { notifMsg = ["err", "Le notifiche sono bloccate: consentile dalle impostazioni del sito (icona del lucchetto nella barra) e riprova."]; renderNotif(); return; }
+  notifPref.on = true;
+ } else notifPref.on = false;
+ saveNotif();
+ try { await syncNotif(); toast(on ? "🔔 Notifiche attivate" : "🔕 Notifiche disattivate"); }
+ catch (e) { notifPref.on = !on; saveNotif(); notifMsg = ["err", "Non sono riuscito a " + (on ? "attivarle" : "disattivarle") + ": " + e.message]; }
+ renderNotif();
+}
+async function setGameNotif(k, on) {
+ notifPref.off = on ? notifPref.off.filter(x => x !== k) : [...new Set([...notifPref.off, k])];
+ saveNotif(); notifMsg = null;
+ try { await syncNotif(); } catch (e) { notifMsg = ["err", "Salvataggio non riuscito: " + e.message]; }
+ renderNotif();
+}
+function switchEl(checked, onchange, disabled) {
+ const i = h("input", {type: "checkbox"}); i.checked = checked; i.disabled = !!disabled; i.addEventListener("change", () => onchange(i.checked));
+ return h("label", {class: "sw"}, i, h("i", {}));
+}
 function renderNotif() {
  const box = $("nList"); box.innerHTML = "";
- if (!CFG.ntfyTopic) { box.append(h("p", {class: "v-note"}, "Notifiche non ancora configurate.")); return; }
- const rows = [["🔔 Tutti i giochi", CFG.ntfyTopic]].concat(ORDER.map(k => ["🎮 " + GAMES[k].name, CFG.ntfyTopic + "-" + GAMES[k].appid]));
- for (const [label, topic] of rows) {
-  box.append(h("div", {class: "nrow"}, h("span", {}, label),
-   h("a", {class: "abtn", href: "https://ntfy.sh/" + encodeURIComponent(topic), target: "_blank", rel: "noopener noreferrer"}, "Iscriviti ↗")));
+ if (!notifSupported()) {
+  box.append(h("p", {class: "v-note"}, location.protocol === "file:" ? "Le notifiche funzionano solo dal sito dell'app, non da un file." : "Questo browser non supporta le notifiche. Su iPhone installa prima l'app dalla schermata Home."));
+  return;
  }
+ const denied = Notification.permission === "denied";
+ box.append(h("div", {class: "nrow big"}, h("span", {}, "Ricevi le notifiche sui nuovi aggiornamenti"), switchEl(notifPref.on && !denied, setMaster, false)));
+ if (denied) box.append(h("p", {class: "nstat errmsg"}, "Le notifiche sono bloccate per questo sito: consentile dalle impostazioni del browser."));
+ else if (notifPref.on) box.append(h("p", {class: "nstat okmsg"}, "✓ Attive su questo dispositivo. Scegli i giochi:"));
+ else box.append(h("p", {class: "v-note"}, "Attiva l'interruttore per essere avvisato anche quando l'app è chiusa."));
+ if (notifPref.on && !denied) {
+  for (const k of ORDER) box.append(h("div", {class: "nrow"}, h("span", {}, GAMES[k].name), switchEl(!notifPref.off.includes(k), on => setGameNotif(k, on))));
+  box.append(h("div", {class: "row-btns"}, h("button", {type: "button", class: "abtn", onclick: async () => {
+   try { const reg = await navigator.serviceWorker.ready; await reg.showNotification("Game Patch Radar", {body: "Le notifiche funzionano ✓", icon: "icons/icon-192.png", badge: "icons/icon-192.png"}); } catch (e) { toast("Prova non riuscita"); }
+  }}, "Invia una notifica di prova")));
+ }
+ if (notifMsg) box.append(h("p", {class: "nstat " + (notifMsg[0] === "err" ? "errmsg" : "okmsg")}, notifMsg[1]));
 }
 $("ntfyLink").addEventListener("click", e => { e.preventDefault(); openManager(); $("nSection").scrollIntoView({block: "start"}); });
 
