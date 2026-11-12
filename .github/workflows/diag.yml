@@ -1,0 +1,14 @@
+name: Diagnostica ntfy
+on: workflow_dispatch
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configurazione web push di ntfy.sh
+        run: |
+          curl -sS -i -H "Origin: https://condor85.github.io" https://ntfy.sh/v1/config | head -30
+          echo ---- preflight
+          curl -sS -i -X OPTIONS -H "Origin: https://condor85.github.io" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type" https://ntfy.sh/v1/webpush | head -15
+      - name: Immagini Steam
+        run: |
+          for id in 892970 1374490 1203620 3321460; do curl -sS "https://store.steampowered.com/api/appdetails?appids=$id&filters=basic&l=english" | python3 -c "import json,sys;d=json.load(sys.stdin);k=list(d)[0];print(k,d[k].get('data',{}).get('name'),d[k].get('data',{}).get('header_image'))"; done

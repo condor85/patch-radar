@@ -114,11 +114,23 @@ def load_games():
     return out
 
 
-def resolve_name(appid):
+def resolve_info(appid):
+    """Nome e immagine di copertina ufficiale dal negozio Steam."""
     try:
-        d = get_json(f"{STORE}/api/appdetails?appids={appid}&filters=basic&l=english")
-        return d[str(appid)]["data"]["name"]
+        d = get_json(f"{STORE}/api/appdetails?appids={appid}&filters=basic&l=english")["%s" % appid]["data"]
+        return d.get("name", ""), d.get("header_image", "")
     except Exception:  # noqa
+        return "", ""
+
+
+def fetch_ntfy_key():
+    """Chiave pubblica con cui ntfy.sh invia le notifiche push al browser."""
+    try:
+        raw = http(f"{NTFY_URL}/config.js", retries=2).decode("utf-8", "replace")
+        m = re.search(r'web_push_public_key"?\s*:\s*"([^"]+)"', raw)
+        return m.group(1) if m else ""
+    except Exception as e:  # noqa
+        print(f"  chiave ntfy non recuperata: {e}", file=sys.stderr)
         return ""
 
 
@@ -322,7 +334,11 @@ def main():
     games, ok = [], 0
     for g in load_games():
         key = str(g["appid"])
-        name = g["name"] or old.get(key, {}).get("name") or resolve_name(g["appid"]) or f"Gioco {g['appid']}"
+        image = old.get(key, {}).get("image") or ""
+        name = g["name"] or old.get(key, {}).get("name") or ""
+        if not image or not name:
+            n2, i2 = resolve_info(g["appid"])
+            name, image = name or n2 or f"Gioco {g['appid']}", image or i2
         try:
             items = fetch_game(g["appid"])
             ok += 1
@@ -330,7 +346,7 @@ def main():
         except Exception as e:  # noqa
             print(f"{name}: ERRORE {e} (tengo i dati precedenti)", file=sys.stderr)
             items = old.get(key, {}).get("items", [])
-        games.append({"appid": g["appid"], "name": name, "items": items})
+        games.append({"appid": g["appid"], "name": name, "image": image, "items": items})
     add_summaries(games, old)
     for g in games:
         o = old.get(str(g["appid"]))
@@ -342,14 +358,15 @@ def main():
             print(f"NUOVO {g['name']}: {it.get('title')}")
             notify(g["name"], it, g["appid"])
     add_translations(games)
-    changed = games != (pg if isinstance(pg, list) else None)
+    ntfy_key = fetch_ntfy_key() or prev.get("ntfy_key", "")
+    changed = games != (pg if isinstance(pg, list) else None) or ntfy_key != prev.get("ntfy_key", "")
     if ok == 0:
         print("Nessun gioco aggiornato.", file=sys.stderr)
         changed = False
     if changed:
         os.makedirs("data", exist_ok=True)
         with open(OUT, "w", encoding="utf-8") as f:
-            json.dump({"updated": int(time.time()), "games": games}, f, ensure_ascii=False, separators=(",", ":"))
+            json.dump({"updated": int(time.time()), "ntfy_key": ntfy_key, "games": games}, f, ensure_ascii=False, separators=(",", ":"))
     out = os.environ.get("GITHUB_OUTPUT")
     if out:
         with open(out, "a") as f:
