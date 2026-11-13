@@ -57,6 +57,39 @@ async function isQuiet() {
   } catch (err) { return false; }
 }
 
+/* ---- Notifiche firmate ----
+   L'argomento ntfy è pubblico (sta in config.json): chiunque potrebbe scrivervi. Per questo l'Action firma ogni notifica con
+   una chiave Ed25519 privata (secret NTFY_SIGN_KEY) e qui si verifica la firma con la chiave pubblica di config.json
+   (campo ntfySignKey). Senza quel campo la verifica è spenta; con il campo, le notifiche non firmate vengono scartate. */
+const SIGN_VERSION = "patch-radar-v1";   // deve coincidere con scripts/fetch_news.py
+const SIGN_MAX_AGE = 7 * 86400;          // una notifica firmata vecchia di oltre una settimana non è più valida (riproposta)
+const b64u = s => Uint8Array.from(atob(String(s).replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
+const trimNl = s => String(s == null ? "" : s).replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, "");
+const tagValue = (m, prefix) => ((Array.isArray(m.tags) ? m.tags : []).find(t => typeof t === "string" && t.startsWith(prefix)) || "").slice(prefix.length);
+
+async function signKey() {
+  const url = new URL("config.json", self.registration.scope).href;
+  for (const get of [() => fetch(url, {cache: "no-cache"}), () => caches.match(url)]) {
+    try { const r = await get(); if (r && r.ok !== false) return String((await r.json()).ntfySignKey || "").trim(); } catch (err) {}
+  }
+  return "";
+}
+// true: firma valida · false: assente, scaduta o non valida · null: questo browser non sa verificare Ed25519 (si accetta, restano i controlli sui link)
+async function verifyMessage(m, pub) {
+  const sig = tagValue(m, "sig:"), ts = Number(tagValue(m, "ts:"));
+  if (!sig || !Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > SIGN_MAX_AGE) return false;
+  let raw;
+  try { raw = b64u(pub); } catch (err) { return false; }
+  if (raw.length !== 32) return false;     // chiave in config.json scritta male: meglio scartare che non controllare
+  let key;
+  try { key = await crypto.subtle.importKey("raw", raw, {name: "Ed25519"}, false, ["verify"]); }
+  catch (err) { return err && err.name === "NotSupportedError" ? null : false; }   // solo «algoritmo non supportato» spegne il controllo
+  try {
+    const data = new TextEncoder().encode([SIGN_VERSION, trimNl(m.topic), trimNl(m.title), trimNl(m.message), trimNl(m.click), String(ts)].join("\n"));
+    return await crypto.subtle.verify({name: "Ed25519"}, key, b64u(sig), data);
+  } catch (err) { return false; }
+}
+
 // Notifiche push (inviate da ntfy.sh): mostra il messaggio ricevuto
 self.addEventListener("push", e => {
   e.waitUntil((async () => {
@@ -66,8 +99,15 @@ self.addEventListener("push", e => {
     const icon = new URL("icons/icon-192.png", self.registration.scope).href;
     const silent = await isQuiet();
     if (d.event === "message" && m) {
+      const pub = await signKey();
+      if (pub && (await verifyMessage(m, pub)) === false) {
+        // Il browser vuole comunque una notifica per ogni push: se ne mostra una sola, muta e sempre la stessa (stesso tag)
+        await self.registration.showNotification("Game Patch Radar", {body: "Ignorata una notifica non autentica.", icon, badge: icon, tag: "rejected", silent: true, data: {url: self.registration.scope}});
+        return;
+      }
+      const sig = tagValue(m, "sig:");
       await self.registration.showNotification(String(m.title || "Game Patch Radar").slice(0, 120), {
-        body: String(m.message || "Nuova pubblicazione").slice(0, 500), icon, badge: icon, tag: m.id || undefined, silent,
+        body: String(m.message || "Nuova pubblicazione").slice(0, 500), icon, badge: icon, tag: sig ? "sig-" + sig.slice(0, 24) : (m.id || undefined), silent,
         data: {url: safeTarget(m.click)}
       });
     } else {

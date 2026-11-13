@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <!-- Difesa in profondità: anche se qualcuno riuscisse a iniettare codice, non potrebbe mandare dati (es. il token admin) a domini non elencati.
      Se aggiungi un servizio esterno al codice, aggiungilo anche qui. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.steamstatic.com; connect-src 'self' https://api.steampowered.com https://store.steampowered.com https://api.github.com https://translate.googleapis.com https://api.mymemory.translated.net https://ntfy.sh https://api.allorigins.win https://proxy.cors.dev https://corsproxy.io https://api.codetabs.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.steamstatic.com; connect-src 'self' https://store.steampowered.com https://api.github.com https://translate.googleapis.com https://api.mymemory.translated.net https://ntfy.sh https://api.allorigins.win https://proxy.cors.dev https://corsproxy.io https://api.codetabs.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-src 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0c1118">
 <script>try{var t=localStorage.getItem("game_patch_radar_theme_v1");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;var z=Number(localStorage.getItem("game_patch_radar_font_v1"));if(z>=0.9&&z<=1.3)document.documentElement.style.setProperty("--tz",z)}catch(e){}</script>
@@ -258,7 +258,7 @@ main{max-width:880px;margin:0 auto;padding:12px}
 </div>
 
 <script>
-const APP_VERSION = "2026-11-13.1";
+const APP_VERSION = "2026-11-13.2";
 /* Se online c'è una versione più recente dell'app, la ricarica da sola (una volta sola per versione). */
 (async () => {
  if (location.protocol === "file:") return;
@@ -293,7 +293,7 @@ function setGames(list) {
  const g = {};
  for (const x of list) {
   const k = String(x.appid);
-  g[k] = {name: x.name || ("Gioco " + k), appid: x.appid, image: x.image || "", price: x.price || null, store: "https://store.steampowered.com/app/" + x.appid + "/"};
+  g[k] = {name: x.name || ("Gioco " + k), appid: x.appid, image: x.image || "", price: x.price || null, players: x.players || null, store: "https://store.steampowered.com/app/" + x.appid + "/"};
  }
  GAMES = g; ORDER = list.map(x => String(x.appid)).filter((k, i, a) => a.indexOf(k) === i);
 }
@@ -314,7 +314,7 @@ function applyPending(list) {
  const gone = new Set(pending.remove.map(g => String(g.id)));
  return list.filter(g => !gone.has(String(g.appid))).concat(pending.add.map(g => ({appid: g.appid, name: g.name, image: ""})));
 }
-function currentList() { return ORDER.map(k => ({appid: GAMES[k].appid, name: GAMES[k].name, image: GAMES[k].image, price: GAMES[k].price})); }
+function currentList() { return ORDER.map(k => ({appid: GAMES[k].appid, name: GAMES[k].name, image: GAMES[k].image, price: GAMES[k].price, players: GAMES[k].players})); }
 const STORE_KEY = "game_patch_radar_v3";
 const REFRESH_MS = 30 * 60 * 1000;
 const PREVIEW_CHARS = 700;
@@ -555,10 +555,15 @@ let snapshot = null;
 async function loadSnapshot() {
  if (location.protocol === "file:") return null;
  try {
-  const r = await fetch("data/news.json?t=" + Date.now(), {cache: "no-store"});
+  const [r, pr] = await Promise.all([fetch("data/news.json?t=" + Date.now(), {cache: "no-store"}), fetch("data/players.json?t=" + Date.now(), {cache: "no-store"}).catch(() => null)]);
   if (!r.ok) return null;
   const d = await r.json();
-  return d && Array.isArray(d.games) ? d : null;
+  if (!d || !Array.isArray(d.games)) return null;
+  try {   // giocatori online (file a parte): se manca o è rotto, semplicemente non si mostrano
+   const pl = pr && pr.ok ? (await pr.json()).games || {} : {};
+   for (const g of d.games) g.players = pl[String(g.appid)] || null;
+  } catch {}
+  return d;
  } catch { return null; }
 }
 function prepare(items) {
@@ -568,32 +573,6 @@ function prepare(items) {
 }
 
 /* ---------- Recupero annunci ---------- */
-async function enrichTruncated(game, items) {
- if (!items.some(it => ELLIPSIS.test((it.contents || "").trim()))) return;
- try {
-  const url = `https://store.steampowered.com/events/ajaxgetadjacentpartnerevents/?appid=${game.appid}&count_before=0&count_after=40&l=english`;
-  const d = await fetchJSON(url, x => Array.isArray(x?.events));
-  for (const it of items) {
-   if (!ELLIPSIS.test((it.contents || "").trim())) continue;
-   const ev = d.events.find(e => String(e.gid) === String(it.gid)
-     || String(e.announcement_body?.gid) === String(it.gid)
-     || (e.announcement_body?.headline || e.event_name) === it.title);
-   const body = ev?.announcement_body?.body;
-   if (body && body.length > (it.contents || "").length) { it.contents = body; it.recovered = true; }
-  }
- } catch {}
-}
-async function getNews(game) {
- const base = `https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${game.appid}&count=20&maxlength=0`;
- const ok = d => Array.isArray(d?.appnews?.newsitems);
- let items = (await fetchJSON(base + "&feeds=steam_community_announcements", ok)).appnews.newsitems;
- if (!items.length) items = (await fetchJSON(base, ok)).appnews.newsitems;
- items.sort((a, b) => b.date - a.date);
- await enrichTruncated(game, items);
- for (const it of items) it.truncated = !it.recovered && ELLIPSIS.test((it.contents || "").trim());
- return items;
-}
-
 /* ---------- Traduzione (Google Translate gratuito, fallback MyMemory) ---------- */
 function splitChunks(text, max) {
  const out = []; let cur = "";
@@ -807,12 +786,10 @@ function parseAppId(text) {
  const m = String(text).match(/store\.steampowered\.com\/app\/(\d+)/i) || String(text).trim().match(/^(\d{2,9})$/);
  return m ? Number(m[1]) : null;
 }
+let searchConsent = false;   // consenso a usare servizi esterni per la ricerca per nome (vale finché la pagina resta aperta)
 async function searchGames(term) {
  const d = await fetchJSON("https://store.steampowered.com/api/storesearch/?term=" + encodeURIComponent(term) + "&l=italian&cc=IT", x => Array.isArray(x && x.items));
  return d.items.slice(0, 8).map(i => ({appid: i.id, name: i.name}));
-}
-async function nameOf(appid) {
- try { const d = await fetchJSON("https://store.steampowered.com/api/appdetails?appids=" + appid + "&filters=basic", x => x && x[appid]); return d[appid].data.name || ""; } catch { return ""; }
 }
 function msgEl(box, text, ok) { let m = box.querySelector(".msg"); if (!m) { m = h("p", {class: "msg"}); box.prepend(m); } m.className = "msg " + (ok ? "okmsg" : "errmsg"); m.textContent = text; }
 function afterGamesChange() { ensureSelected(); render(); renderAdmin(); refreshAll(); }
@@ -878,16 +855,20 @@ async function renderAdmin() {
    }}, "🗑 Elimina")));
  }
  box.append(h("h4", {}, "Aggiungi un gioco"));
- const q = h("input", {type: "search", placeholder: "Nome del gioco o link Steam", autocomplete: "off"});
+ const q = h("input", {type: "search", placeholder: "Link Steam del gioco, o il suo nome", autocomplete: "off"});
  const res = h("div", {});
  const addBtn = async g => {
-  try { if (!g.name) g.name = await nameOf(g.appid); await adminAdd(g); } catch (err) { msgEl(box, err.message, false); }
+  try { await adminAdd(g); } catch (err) { msgEl(box, err.message, false); }   // senza nome lo ricava il controllo automatico dalla pagina Steam
  };
  const doSearch = async () => {
   const term = q.value.trim(); if (!term) return;
   res.innerHTML = ""; res.append(h("p", {}, "Cerco…"));
   const id = parseAppId(term);
   if (id) { res.innerHTML = ""; res.append(h("div", {class: "row"}, h("span", {class: "nm"}, "App Steam n. " + id), h("button", {class: "abtn", type: "button", onclick: () => addBtn({appid: id, name: ""})}, "+ Aggiungi"))); return; }
+  if (!searchConsent) {
+   if (!confirm("La ricerca per nome passa da servizi gratuiti di terzi (allorigins, corsproxy…), che vedranno il testo che cerchi e potrebbero alterare i risultati.\n\nPer evitarlo incolla il link Steam del gioco (o il suo numero): è sicuro e non usa nessun servizio esterno.\n\nContinuare con la ricerca per nome?")) { res.innerHTML = ""; return; }
+   searchConsent = true;
+  }
   try {
    const list = await searchGames(term); res.innerHTML = "";
    if (!list.length) res.append(h("p", {}, "Nessun risultato. Prova con un altro nome o incolla il link della pagina Steam del gioco."));
@@ -1058,18 +1039,8 @@ function toggleSearch() {
  if (searchOpen) $("q").focus();
 }
 
-const players = {};       // gioco -> {n}
-const playersTry = {};    // gioco -> ultimo tentativo
-async function ensurePlayers(key) {
- if (Date.now() - (playersTry[key] || 0) < 10 * 60000) return;
- playersTry[key] = Date.now();
- try {
-  const d = await fetchJSON("https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid=" + GAMES[key].appid, x => x && x.response && typeof x.response.player_count === "number", 6000, 2);
-  players[key] = {n: d.response.player_count};
-  if (key === selected && !crossGame()) renderMeta(false);
- } catch {}
-}
-function renderMeta(fetchPlayers = true) {
+/* Giocatori online: li legge il server (GitHub Action) e li pubblica in data/players.json; l'app non interroga più Steam attraverso proxy di terzi */
+function renderMeta() {
  const el = $("meta"); el.innerHTML = "";
  if (crossGame() || !GAMES[selected]) return;
  const g = GAMES[selected], p = g.price;
@@ -1078,9 +1049,11 @@ function renderMeta(fetchPlayers = true) {
   el.append(h("a", {class: "mchip" + (sale ? " sale" : ""), href: g.store, target: "_blank", rel: "noopener noreferrer", title: "Apri la pagina Steam"},
    sale ? "🏷 −" + p.discount + "% · " + p.final + (p.initial ? " (era " + p.initial + ")" : "") : "💶 " + p.final));
  }
- const pl = players[selected];
- if (pl) el.append(h("span", {class: "mchip", title: "Giocatori connessi su Steam"}, "👥 " + pl.n.toLocaleString("it-IT") + " online"));
- if (fetchPlayers) ensurePlayers(selected);
+ const pl = g.players;
+ if (pl && Number.isFinite(pl.n)) {
+  const when = pl.ts ? new Date(pl.ts * 1000).toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"}) : "";
+  el.append(h("span", {class: "mchip", title: "Giocatori connessi su Steam" + (when ? " alle " + when : "")}, "👥 " + pl.n.toLocaleString("it-IT") + " online"));
+ }
 }
 
 /* Avviso se il controllo automatico su GitHub non parte da troppo tempo */
@@ -1126,7 +1099,8 @@ function render() {
 async function loadGame(key) {
  try {
   const g = snapshot && snapshot.games.find(x => String(x.appid) === key);
-  cache[key] = g && g.items && g.items.length ? prepare(g.items) : await getNews(GAMES[key]);
+  if (!g || !g.items || !g.items.length) throw new Error(snapshot ? "il controllo automatico non ha ancora letto questo gioco: basta attendere il prossimo aggiornamento" : "i dati non sono raggiungibili");
+  cache[key] = prepare(g.items);
   return null;
  }
  catch (e) { return e; }
@@ -1150,12 +1124,12 @@ async function doRefresh(manual) {
  const failedSelected = errors[visibleKeys().indexOf(selected)];
  if (!failedSelected) {
   lastRefresh = Date.now(); save();
-  setStatus("Ultimo controllo: " + new Date().toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"}) + " · fonte: Steam" + (snapshot ? " via GitHub" : "") + (lastCheck ? " · controllo automatico alle " + new Date(lastCheck).toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"}) : ""), "ok");
+  setStatus("Ultimo controllo: " + new Date().toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"}) + " · fonte: Steam via GitHub" + (lastCheck ? " · controllo automatico alle " + new Date(lastCheck).toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"}) : ""), "ok");
  } else if (cache[selected]) {
-  setStatus("Steam non risponde: mostro gli ultimi dati salvati. Premi «Aggiorna» per riprovare. (" + failedSelected.message + ")", "error");
+  setStatus("Aggiornamento non riuscito: mostro gli ultimi dati salvati. Premi «Aggiorna» per riprovare. (" + failedSelected.message + ")", "error");
  } else {
   const g = GAMES[selected];
-  setStatus("Non riesco a raggiungere Steam. Premi «Aggiorna» per riprovare. (" + failedSelected.message + ")", "error");
+  setStatus("Dati non disponibili. Premi «Aggiorna» per riprovare. (" + failedSelected.message + ")", "error");
   // Il nome del gioco arriva da dati esterni (Steam, games.json): mai dentro una stringa HTML
   $("cards").replaceChildren(h("div", {class: "empty"}, "Connessione non riuscita.", h("br"), h("br"),
    h("a", {style: "color:var(--accent)", href: g.store, target: "_blank", rel: "noopener noreferrer"}, "Apri la pagina Steam di " + g.name + " ↗")));

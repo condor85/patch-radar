@@ -24,14 +24,29 @@ Gli argomenti ntfy sono `<argomento>-<appid>` (patch), `-news`, `-sale`, `-diges
 
 ## Sicurezza
 
-- **L'argomento ntfy non è un segreto**: sta in `config.json`, che in un repository pubblico lo rende leggibile a tutti. Chi lo conosce può inviare notifiche false. Per questo il service worker apre dalle notifiche solo link dell'app e di `store.steampowered.com` / `steamcommunity.com`, e ignora qualunque altro indirizzo.
+- **L'argomento ntfy non è un segreto**: sta in `config.json`, che in un repository pubblico lo rende leggibile a tutti, e chiunque lo conosca può scriverci. Due difese: le **notifiche firmate** (qui sotto) e il service worker, che dalle notifiche apre solo link dell'app e di `store.steampowered.com` / `steamcommunity.com`.
 - **Token di amministrazione**: è salvato nel browser. Usa un token *fine-grained* limitato a questo repository (Contents: lettura e scrittura) con scadenza (90 giorni); alla scadenza l'app lo scarta e ne chiede uno nuovo.
 - **Content-Security-Policy**: `index.html` limita i domini con cui la pagina può comunicare. Se aggiungi un servizio esterno al codice, aggiungilo anche a `connect-src` (o `img-src`).
+- **Servizi di terzi**: l'app legge solo dati del proprio sito (`data/news.json`, `data/players.json`) e, per lo stato dell'Action, `api.github.com`. Anche i giocatori online li legge l'Action. L'unico uso di servizi esterni (proxy CORS) è la **ricerca per nome** nell'amministrazione, e parte solo dopo conferma; incollando il link Steam del gioco (o il numero) non si usa nulla di esterno e il nome lo ricava l'Action.
 - Il nome dell'argomento è letto da `config.json`; il secret `NTFY_TOPIC` vale solo come ripiego.
+
+### Notifiche firmate (consigliato)
+
+L'Action firma ogni notifica con una chiave privata Ed25519 e l'app scarta quelle che non risultano firmate da lei, anche se qualcuno conosce l'argomento. Va attivata in due tempi, così non si rischia di restare senza notifiche:
+
+1. **Crea le chiavi** sul tuo computer: `python3 scripts/gen_signing_key.py`.
+2. **Fase 1 – inizia a firmare.** Salva la *chiave privata* nel secret `NTFY_SIGN_KEY` (Settings → Secrets and variables → Actions). Da ora le notifiche partono firmate, ma l'app le accetta ancora tutte. Aspetta una notifica vera (o lancia l'Action a mano dopo un nuovo annuncio) e controlla che arrivi.
+3. **Fase 2 – inizia a controllare.** Scrivi la *chiave pubblica* in `config.json`: `"ntfySignKey": "…"`. Da ora l'app mostra solo le notifiche con firma valida e scarta le altre (al loro posto compare una sola notifica muta «Ignorata una notifica non autentica»).
+
+Se dopo la fase 2 non arriva più nulla, togli `ntfySignKey` da `config.json`: la verifica si spegne. I browser senza supporto a Ed25519 (molto vecchi) accettano le notifiche, ma i link restano filtrati.
+
+## Notifiche e salvataggio dei dati
+
+Il controllo accoda le notifiche in `outbox.json` (non finisce nel repository); le invia un passo del workflow successivo, **solo dopo** aver salvato i dati con `git push`. Se il salvataggio fallisce la notifica non parte, e la volta dopo l'annuncio risulta ancora nuovo: niente notifiche doppie.
 
 ## Test
 
 ```
-python3 -m unittest discover -s tests -v   # script di aggiornamento (fetch_news.py)
-node tests/sw.test.js                      # service worker (cache, notifiche)
+python3 -m unittest discover -s tests -v   # script di aggiornamento (fetch_news.py, firma, coda notifiche)
+node tests/sw.test.js                      # service worker (cache, notifiche, firme verificate con WebCrypto)
 ```

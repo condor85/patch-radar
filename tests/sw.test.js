@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const { execFileSync } = require("node:child_process");
 
 const SCOPE = "https://utente.github.io/patch-radar/";
 const ORIGIN = "https://utente.github.io";
@@ -27,7 +28,7 @@ function makeWorker() {
     skipWaiting() {},
     clients: { claim: async () => {}, matchAll: async () => windows, openWindow: async u => { opened.push(u); } },
   };
-  const ctx = { self, caches: cacheApi, location: { origin: ORIGIN }, clients: self.clients, URL, Response, Request, console, Date };
+  const ctx = { self, caches: cacheApi, location: { origin: ORIGIN }, clients: self.clients, URL, Response, Request, console, Date, crypto: globalThis.crypto, atob, TextEncoder };
   ctx.fetchImpl = async () => { throw new TypeError("offline"); };
   ctx.fetch = (...a) => ctx.fetchImpl(...a);
   vm.createContext(ctx);
@@ -146,6 +147,111 @@ async function doFetch(w, url, mode) {
     await w.ctx.caches.open("patch-radar-v6"); await w.ctx.caches.open("patch-radar-v7"); await w.ctx.caches.open("gpr-prefs");
     await w.fire("activate", {});
     assert.deepEqual([...w.stores.keys()].sort(), ["gpr-prefs", "patch-radar-v7"]);
+  });
+
+
+  // ---- Notifiche firmate: le firme le produce il vero codice Python del server (scripts/fetch_news.py) ----
+  const ROOT = path.join(__dirname, "..");
+  const SEED = Buffer.alloc(32, 7).toString("base64url");
+  const py = `
+import sys, json, os
+sys.path.insert(0, "scripts")
+import fetch_news as fn, ed25519
+os.environ["NTFY_SIGN_KEY"] = ${JSON.stringify(SEED)}
+spec = json.loads(sys.argv[1])
+print(json.dumps({"pub": fn._b64u(ed25519.public_key(bytes([7]) * 32)), "tags": fn.signed_tags(spec["topic"], spec["title"], spec["message"], spec["click"], ["video_game"], spec.get("ts"))}))`;
+  const signed = spec => JSON.parse(execFileSync("python3", ["-c", py, JSON.stringify(spec)], { cwd: ROOT }).toString());
+  const BASE = { topic: "patch-radar-abc-892970", title: "Valheim: nuovo aggiornamento", message: "Patch 0.221\n• Correzioni", click: SCOPE };
+  const msgOf = (spec, over = {}) => ({ id: "x1", event: "message", topic: spec.topic, title: spec.title, message: spec.message, click: spec.click, tags: signed(spec).tags, ...over });
+  const pushMsg = (w, m) => w.fire("push", { data: { json: () => ({ event: "message", message: m }) } });
+  const withKey = async (pub, w = makeWorker()) => { w.ctx.fetchImpl = async () => basic(JSON.stringify(pub === undefined ? {} : { ntfyTopic: "t", ntfySignKey: pub })); return w; };
+
+  await t("firma: la notifica firmata dall'Action (Python) viene accettata da WebCrypto", async () => {
+    const { pub } = signed({ ...BASE, ts: Math.floor(Date.now() / 1000) });
+    const w = await withKey(pub);
+    await pushMsg(w, msgOf({ ...BASE, ts: Math.floor(Date.now() / 1000) }));
+    assert.equal(w.shown.length, 1); assert.equal(w.shown[0].title, BASE.title); assert.notEqual(w.shown[0].tag, "rejected");
+  });
+
+  await t("firma: spazi e a capo ai bordi aggiunti o tolti dal server non la invalidano", async () => {
+    const spec = { ...BASE, ts: Math.floor(Date.now() / 1000) };
+    const { pub } = signed(spec); const w = await withKey(pub);
+    await pushMsg(w, msgOf(spec, { message: "  " + spec.message + "\n\n" }));
+    assert.notEqual(w.shown[0].tag, "rejected");
+  });
+
+  await t("firma: con la chiave configurata, una notifica NON firmata viene scartata", async () => {
+    const { pub } = signed({ ...BASE }); const w = await withKey(pub);
+    await pushMsg(w, { id: "x", event: "message", topic: BASE.topic, title: "Valheim: nuovo aggiornamento", message: "Scarica subito", click: "https://evil.example/", tags: ["video_game"] });
+    assert.equal(w.shown.length, 1); assert.equal(w.shown[0].tag, "rejected"); assert.equal(w.shown[0].silent, true);
+    assert.equal(w.shown[0].title, "Game Patch Radar");
+  });
+
+  await t("firma: qualunque campo alterato (titolo, testo, link, argomento) invalida la notifica", async () => {
+    const spec = { ...BASE, ts: Math.floor(Date.now() / 1000) };
+    const { pub } = signed(spec);
+    for (const over of [{ title: "Altro" }, { message: "Altro" }, { click: "https://evil.example/" }, { topic: "altro-argomento" }]) {
+      const w = await withKey(pub); await pushMsg(w, msgOf(spec, over));
+      assert.equal(w.shown[0].tag, "rejected", JSON.stringify(over));
+    }
+  });
+
+  await t("firma: una notifica firmata ma troppo vecchia (riproposta) viene scartata", async () => {
+    const spec = { ...BASE, ts: Math.floor(Date.now() / 1000) - 8 * 86400 };
+    const { pub } = signed(spec); const w = await withKey(pub);
+    await pushMsg(w, msgOf(spec));
+    assert.equal(w.shown[0].tag, "rejected");
+  });
+
+  await t("firma: firmata con un'altra chiave = scartata", async () => {
+    const spec = { ...BASE, ts: Math.floor(Date.now() / 1000) };
+    const other = Buffer.alloc(32, 9).toString("base64url");     // chiave pubblica non corrispondente (valore qualunque di 32 byte)
+    const w = await withKey(other); await pushMsg(w, msgOf(spec));
+    assert.equal(w.shown[0].tag, "rejected");
+  });
+
+  await t("firma: chiave scritta male in config.json = si scarta (non si disattiva il controllo in silenzio)", async () => {
+    const spec = { ...BASE, ts: Math.floor(Date.now() / 1000) };
+    const w = await withKey("chiave-sbagliata"); await pushMsg(w, msgOf(spec));
+    assert.equal(w.shown[0].tag, "rejected");
+  });
+
+  await t("firma: senza chiave in config.json la verifica è spenta (fase di avvio)", async () => {
+    const w = await withKey(undefined);
+    await pushMsg(w, { id: "x", event: "message", topic: "t", title: "Non firmata", message: "ok", tags: [] });
+    assert.equal(w.shown[0].title, "Non firmata");
+  });
+
+  await t("firma: browser senza Ed25519 -> si accetta, restano i controlli sui link", async () => {
+    const spec = { ...BASE, ts: Math.floor(Date.now() / 1000), click: "https://evil.example/" };
+    const { pub } = signed(spec); const w = await withKey(pub);
+    w.ctx.crypto = { subtle: { importKey: async () => { throw Object.assign(new Error("Unrecognized name"), { name: "NotSupportedError" }); } } };
+    await pushMsg(w, msgOf(spec));
+    assert.equal(w.shown[0].title, BASE.title); assert.equal(w.shown[0].data.url, SCOPE);   // il link non fidato viene comunque scartato
+  });
+
+  await t("firma: errore di importazione diverso da «non supportato» = si scarta", async () => {
+    const spec = { ...BASE, ts: Math.floor(Date.now() / 1000) };
+    const { pub } = signed(spec); const w = await withKey(pub);
+    w.ctx.crypto = { subtle: { importKey: async () => { throw Object.assign(new Error("dati non validi"), { name: "DataError" }); } } };
+    await pushMsg(w, msgOf(spec));
+    assert.equal(w.shown[0].tag, "rejected");
+  });
+
+  await t("firma: offline si usa la copia di config.json salvata (la verifica non si spegne)", async () => {
+    const spec = { ...BASE, ts: Math.floor(Date.now() / 1000) };
+    const { pub } = signed(spec); const w = makeWorker();
+    const c = await w.ctx.caches.open("patch-radar-v7");
+    await c.put(`${SCOPE}config.json`, basic(JSON.stringify({ ntfySignKey: pub })));
+    await pushMsg(w, { id: "x", event: "message", topic: "t", title: "Falsa", message: "x", tags: [] });
+    assert.equal(w.shown[0].tag, "rejected");
+  });
+
+  await t("firma: la stessa notifica riproposta si sostituisce invece di duplicarsi (stesso tag)", async () => {
+    const spec = { ...BASE, ts: Math.floor(Date.now() / 1000) };
+    const { pub } = signed(spec); const w = await withKey(pub);
+    const m = msgOf(spec); await pushMsg(w, m); await pushMsg(w, { ...m, id: "altro-id" });
+    assert.equal(w.shown[0].tag, w.shown[1].tag);
   });
 
   console.log(`\n${n} test passati`);

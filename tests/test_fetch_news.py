@@ -1,4 +1,5 @@
 """Test di scripts/fetch_news.py. Si lanciano dalla radice del repository:  python3 -m unittest discover -s tests -v"""
+import base64
 import contextlib
 import io
 import json
@@ -157,7 +158,7 @@ class DigestWhenSteamIsDown(unittest.TestCase):
         fresh = [{"gid": "10", "title": "Patch 1.0", "contents": "x", "date": 2, "tags": ["patchnotes"]}]
         with workdir(files):
             with mock.patch.object(fn, "fetch_game", return_value=fresh), mock.patch.object(fn, "store_details", return_value={"name": "G1", "image": "", "price": None}), \
-                    mock.patch.object(fn, "fetch_ntfy_key", return_value=""), mock.patch.object(fn, "send_digest") as digest, mock.patch.object(fn, "ntfy_send"), \
+                    mock.patch.object(fn, "fetch_ntfy_key", return_value=""), mock.patch.object(fn, "send_digest") as digest, mock.patch.object(fn, "update_players", return_value=False), \
                     mock.patch.object(fn, "GEMINI_KEY", ""), mock.patch.object(fn, "extractive_summary", return_value=""), \
                     mock.patch.object(fn, "DIGEST_HOUR", 0), contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
                 fn.main()
@@ -172,6 +173,201 @@ class Main(unittest.TestCase):
                 fn.main()
             self.assertEqual(cm.exception.code, 1)
             self.assertIn("::error file=games.json::", out.getvalue())
+
+
+RFC8032_SEED = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
+
+
+class Ed25519(unittest.TestCase):
+    def test_rfc8032_vector(self):
+        from ed25519 import public_key, sign
+        self.assertEqual(public_key(RFC8032_SEED).hex(), "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a")
+        self.assertEqual(sign(RFC8032_SEED, b"").hex(), "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b")
+
+    def test_matches_reference_implementation_if_available(self):
+        try:
+            from cryptography.hazmat.primitives import serialization
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        except ImportError:
+            self.skipTest("cryptography non installata")
+        from ed25519 import public_key, sign
+        for i in range(20):
+            seed, msg = os.urandom(32), os.urandom(i * 11)
+            k = Ed25519PrivateKey.from_private_bytes(seed)
+            self.assertEqual(public_key(seed), k.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw))
+            self.assertEqual(sign(seed, msg), k.sign(msg))
+
+    def test_bad_seed_length(self):
+        from ed25519 import sign
+        with self.assertRaises(ValueError):
+            sign(b"corta", b"x")
+
+
+class Signing(unittest.TestCase):
+    KEY = base64.urlsafe_b64encode(RFC8032_SEED).decode().rstrip("=")
+
+    def test_no_key_leaves_tags_untouched(self):
+        with mock.patch.dict(os.environ, {"NTFY_SIGN_KEY": ""}):
+            self.assertEqual(fn.signed_tags("t", "T", "M", "", ["video_game"]), ["video_game"])
+
+    def test_signature_is_verifiable_and_bound_to_every_field(self):
+        from ed25519 import public_key
+        try:
+            from cryptography.exceptions import InvalidSignature
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+        except ImportError:
+            self.skipTest("cryptography non installata")
+        with mock.patch.dict(os.environ, {"NTFY_SIGN_KEY": self.KEY}):
+            tags = fn.signed_tags("topic-1", "Titolo", "Testo", "https://x/", ["video_game"], ts=1700000000)
+        self.assertEqual(tags[0], "video_game")
+        self.assertEqual(tags[1], "ts:1700000000")
+        sig = base64.urlsafe_b64decode(tags[2][4:] + "==")
+        pub = Ed25519PublicKey.from_public_bytes(public_key(RFC8032_SEED))
+        pub.verify(sig, fn.signing_payload("topic-1", "Titolo", "Testo", "https://x/", 1700000000))
+        for altered in [("topic-2", "Titolo", "Testo", "https://x/", 1700000000), ("topic-1", "Altro", "Testo", "https://x/", 1700000000),
+                        ("topic-1", "Titolo", "Altro", "https://x/", 1700000000), ("topic-1", "Titolo", "Testo", "https://evil/", 1700000000),
+                        ("topic-1", "Titolo", "Testo", "https://x/", 1700000001)]:
+            with self.assertRaises(InvalidSignature):
+                pub.verify(sig, fn.signing_payload(*altered))
+
+    def test_edge_whitespace_is_not_part_of_the_signature(self):
+        self.assertEqual(fn.signing_payload("t", " T\n", "\nM  ", "", 5), fn.signing_payload("t", "T", "M", "", 5))
+
+    def test_invalid_key_sends_unsigned_with_a_warning(self):
+        with mock.patch.dict(os.environ, {"NTFY_SIGN_KEY": "non-e-una-chiave!"}), contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(fn.signed_tags("t", "T", "M", "", ["x"]), ["x"])
+        self.assertIn("firma non riuscita", err.getvalue())
+
+    def test_ntfy_send_signs_each_topic_separately(self):
+        sent = []
+        with mock.patch.dict(os.environ, {"NTFY_SIGN_KEY": self.KEY}), mock.patch.object(fn, "NTFY_TOPIC", "t"), mock.patch.object(fn, "SITE_URL", "https://sito/"), \
+                mock.patch.object(fn, "http", side_effect=lambda url, data=None, **kw: sent.append(json.loads(data))):
+            fn.ntfy_send(["a", "b"], "Titolo", "Testo", ["video_game"])
+        self.assertEqual([m["topic"] for m in sent], ["a", "b"])
+        self.assertEqual(sent[0]["click"], "https://sito/")
+        self.assertNotEqual(sent[0]["tags"][-1], sent[1]["tags"][-1])   # l'argomento fa parte della firma
+
+
+class Outbox(unittest.TestCase):
+    def setUp(self):
+        fn.OUTBOX_ITEMS.clear()
+        self.addCleanup(fn.OUTBOX_ITEMS.clear)
+
+    def test_notify_only_queues(self):
+        with mock.patch.object(fn, "NTFY_TOPIC", "t"), mock.patch.object(fn, "http", side_effect=AssertionError("rete")):
+            fn.notify("Valheim", {"title": "Patch 1", "patch": True, "summary": "x"}, 892970)
+            fn.notify("Valheim", {"title": "Evento"}, 892970)
+            fn.notify_sale("Valheim", 892970, {"discount": 20, "final": "8 €", "initial": "10 €"})
+        self.assertEqual([m["topics"] for m in fn.OUTBOX_ITEMS], [["t", "t-892970"], ["t-892970-news"], ["t-892970-sale"]])
+
+    def test_no_topic_no_queue(self):
+        with mock.patch.object(fn, "NTFY_TOPIC", ""):
+            fn.notify("G", {"title": "x", "patch": True}, 1)
+        self.assertEqual(fn.OUTBOX_ITEMS, [])
+
+    def test_send_outbox_sends_then_deletes_file(self):
+        with workdir():
+            with open("outbox.json", "w", encoding="utf-8") as f:
+                json.dump([{"topics": ["a"], "title": "T", "message": "M", "tags": ["x"], "click": ""}], f)
+            with mock.patch.object(fn, "ntfy_send") as send, contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(fn.send_outbox(), 1)
+            send.assert_called_once_with(["a"], "T", "M", ["x"], "")
+            self.assertFalse(os.path.exists("outbox.json"))
+
+    def test_send_outbox_without_file_is_fine(self):
+        with workdir(), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(fn.send_outbox(), 0)
+
+    def test_send_outbox_deletes_file_before_sending(self):
+        """Se l'invio si interrompe a metà, una nuova esecuzione non deve rimandare le stesse notifiche."""
+        with workdir():
+            with open("outbox.json", "w", encoding="utf-8") as f:
+                json.dump([{"topics": ["a"], "title": "T", "message": "M", "tags": [], "click": ""}], f)
+            seen = []
+            with mock.patch.object(fn, "ntfy_send", side_effect=lambda *a: seen.append(os.path.exists("outbox.json"))), contextlib.redirect_stdout(io.StringIO()):
+                fn.send_outbox()
+            self.assertEqual(seen, [False])
+
+    def _run_main(self, fetched, prev_items, notify_topic="t"):
+        prev = {"updated": 1, "digest_ts": 2 ** 40, "games": [{"appid": 1, "name": "G1", "items": prev_items}]}
+        files = {"games.json": {"games": [{"appid": 1, "name": "G1"}]}, "config.json": {"ntfyTopic": notify_topic}, "data/news.json": prev}
+        return files, fetched
+
+    def test_main_never_touches_the_network_for_notifications_and_writes_the_outbox(self):
+        old = [{"gid": "1", "title": "Vecchio", "contents": "x", "date": 1, "tags": []}]
+        new = [{"gid": "2", "title": "Patch 2.0", "contents": "x" * 50, "date": 5, "tags": ["patchnotes"]}] + old
+        files, fetched = self._run_main(new, old)
+        with workdir(files):
+            with mock.patch.object(fn, "fetch_game", return_value=new), mock.patch.object(fn, "store_details", return_value={"name": "G1", "image": "", "price": None}), \
+                    mock.patch.object(fn, "fetch_ntfy_key", return_value=""), mock.patch.object(fn, "update_players", return_value=False), mock.patch.object(fn, "GEMINI_KEY", ""), \
+                    mock.patch.object(fn, "extractive_summary", return_value=""), mock.patch.object(fn, "NTFY_TOPIC", "t"), \
+                    mock.patch.object(fn, "http", side_effect=AssertionError("durante il controllo non si invia nulla")), \
+                    contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                fn.main()
+            with open("outbox.json", encoding="utf-8") as f:
+                queued = json.load(f)
+        self.assertEqual(len(queued), 1)
+        self.assertEqual(queued[0]["topics"], ["t", "t-1"])
+        self.assertIn("Patch 2.0", queued[0]["message"])
+
+    def test_main_removes_a_stale_outbox_when_nothing_is_new(self):
+        old = [{"gid": "1", "title": "Vecchio", "contents": "x", "date": 1, "tags": []}]
+        files, _ = self._run_main(old, old)
+        files["outbox.json"] = json.dumps([{"topics": ["a"], "title": "vecchia", "message": "", "tags": [], "click": ""}])
+        with workdir(files):
+            with mock.patch.object(fn, "fetch_game", return_value=old), mock.patch.object(fn, "store_details", return_value={"name": "G1", "image": "", "price": None}), \
+                    mock.patch.object(fn, "fetch_ntfy_key", return_value=""), mock.patch.object(fn, "update_players", return_value=False), mock.patch.object(fn, "GEMINI_KEY", ""), \
+                    mock.patch.object(fn, "extractive_summary", return_value=""), contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                fn.main()
+            self.assertFalse(os.path.exists("outbox.json"))
+
+
+class Players(unittest.TestCase):
+    NOW = 1_700_000_000
+
+    def run_update(self, prev, counts):
+        files = {"data/players.json": {"games": prev}} if prev is not None else {}
+        with workdir(files):
+            with mock.patch.object(fn, "current_players", side_effect=lambda a: counts[a] if not isinstance(counts[a], Exception) else (_ for _ in ()).throw(counts[a])), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                changed = fn.update_players([{"appid": a} for a in counts], self.NOW)
+            with open("data/players.json", encoding="utf-8") as f:
+                return changed, json.load(f)["games"]
+
+    def test_first_run_writes_everything(self):
+        changed, out = self.run_update(None, {1: 500, 2: 40})
+        self.assertTrue(changed)
+        self.assertEqual(out, {"1": {"n": 500, "ts": self.NOW}, "2": {"n": 40, "ts": self.NOW}})
+
+    def test_small_variation_keeps_the_old_value_so_no_commit(self):
+        changed, out = self.run_update({"1": {"n": 1000, "ts": self.NOW - 3600}}, {1: 1040})
+        self.assertFalse(changed)
+        self.assertEqual(out["1"], {"n": 1000, "ts": self.NOW - 3600})
+
+    def test_big_variation_updates(self):
+        changed, out = self.run_update({"1": {"n": 1000, "ts": self.NOW - 3600}}, {1: 1300})
+        self.assertTrue(changed)
+        self.assertEqual(out["1"], {"n": 1300, "ts": self.NOW})
+
+    def test_old_value_is_refreshed_after_a_few_hours(self):
+        changed, out = self.run_update({"1": {"n": 1000, "ts": self.NOW - fn.PLAYERS_MAX_AGE - 1}}, {1: 1001})
+        self.assertTrue(changed)
+        self.assertEqual(out["1"]["ts"], self.NOW)
+
+    def test_tiny_games_do_not_flap(self):
+        changed, _ = self.run_update({"1": {"n": 12, "ts": self.NOW - 60}}, {1: 15})
+        self.assertFalse(changed)
+
+    def test_a_failed_read_keeps_the_previous_value(self):
+        changed, out = self.run_update({"1": {"n": 700, "ts": 5}}, {1: OSError("down")})
+        self.assertFalse(changed)
+        self.assertEqual(out["1"], {"n": 700, "ts": 5})
+
+    def test_garbage_from_steam_is_rejected(self):
+        for bad in (None, -3, "12", True):
+            with mock.patch.object(fn, "get_json", return_value={"response": {"player_count": bad}}):
+                with self.assertRaises((ValueError, TypeError)):
+                    fn.current_players(1)
 
 
 if __name__ == "__main__":

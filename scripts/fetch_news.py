@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
-"""Scarica gli annunci Steam dei giochi, li salva in data/news.json e (opzionale) invia notifiche ntfy."""
-import datetime, json, os, re, sys, time, urllib.error, urllib.parse, urllib.request
+"""Scarica gli annunci Steam dei giochi e li salva in data/news.json.
+
+Le notifiche ntfy NON partono durante il controllo: vengono accodate in outbox.json e inviate dal passo successivo
+(`python3 scripts/fetch_news.py --send`) solo dopo che i dati sono stati salvati nel repository. Così, se il salvataggio
+fallisce, la volta dopo gli stessi annunci risultano ancora nuovi e nessuna notifica viene mandata due volte."""
+import base64, datetime, json, os, re, sys, time, urllib.error, urllib.parse, urllib.request
 from zoneinfo import ZoneInfo
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ed25519  # noqa: E402
 
 API = os.environ.get("STEAM_API_BASE", "https://api.steampowered.com")
 STORE = os.environ.get("STEAM_STORE_BASE", "https://store.steampowered.com")
@@ -23,6 +30,10 @@ NTFY_TOPIC = _topic()
 NTFY_URL = os.environ.get("NTFY_URL", "https://ntfy.sh")
 SITE_URL = os.environ.get("SITE_URL", "")
 OUT = "data/news.json"
+PLAYERS_OUT = "data/players.json"        # giocatori online: file a parte, così news.json cambia solo quando ci sono novità vere
+OUTBOX = os.environ.get("OUTBOX_FILE", "outbox.json")
+PLAYERS_MAX_AGE = 6 * 3600               # il numero si aggiorna se cambia di almeno il 10% o dopo questo tempo
+SIGN_VERSION = "patch-radar-v1"          # deve coincidere con sw.js
 KEEP = ("gid", "title", "url", "contents", "date", "feedlabel", "feedname", "author", "tags")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GEMINI_BASE = os.environ.get("GEMINI_BASE", "https://generativelanguage.googleapis.com/v1beta/models")
@@ -140,6 +151,46 @@ def store_details(appid):
     if po:
         price = {"final": po.get("final_formatted") or "", "initial": po.get("initial_formatted") or "", "discount": int(po.get("discount_percent") or 0)}
     return {"name": data.get("name", ""), "image": data.get("header_image", ""), "price": price}
+
+
+def current_players(appid):
+    d = get_json(f"{API}/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid={appid}")
+    n = d["response"]["player_count"]
+    if isinstance(n, bool) or not isinstance(n, int) or n < 0:
+        raise ValueError("numero di giocatori non valido")
+    return n
+
+
+def update_players(games, now):
+    """Giocatori online per gioco, in data/players.json. Il valore cambia solo se è variato di almeno il 10% (o dopo qualche ora),
+    così il repository non riceve un commit a ogni controllo per un numero che oscilla di continuo.
+    Così l'app non deve più interrogare Steam attraverso servizi di terzi. Ritorna True se il file è cambiato."""
+    try:
+        with open(PLAYERS_OUT, encoding="utf-8") as f:
+            prev = json.load(f).get("games", {})
+        if not isinstance(prev, dict):
+            prev = {}
+    except Exception:  # noqa
+        prev = {}
+    out = {}
+    for g in games:
+        k = str(g["appid"])
+        old = prev.get(k) if isinstance(prev.get(k), dict) and isinstance(prev[k].get("n"), int) else None
+        try:
+            n = current_players(g["appid"])
+        except Exception as e:  # noqa
+            print(f"  giocatori non letti per {g['appid']}: {str(e)[:100]}", file=sys.stderr)
+            if old:
+                out[k] = old
+            continue
+        stable = old and abs(n - old["n"]) < max(10, 0.1 * old["n"]) and now - (old.get("ts") or 0) < PLAYERS_MAX_AGE
+        out[k] = old if stable else {"n": n, "ts": now}
+    if out == prev:
+        return False
+    os.makedirs("data", exist_ok=True)
+    with open(PLAYERS_OUT, "w", encoding="utf-8") as f:
+        json.dump({"games": out}, f, separators=(",", ":"))
+    return True
 
 
 def fetch_ntfy_key():
@@ -399,17 +450,81 @@ def add_translations(games):
             it.pop("it_fail", None)
 
 
+OUTBOX_ITEMS = []   # notifiche del controllo in corso, scritte in outbox.json a dati salvati
+
+
+def enqueue(topics, title, message, tags, click=""):
+    """Mette in coda una notifica: verrà inviata da `--send` dopo il salvataggio dei dati."""
+    if not NTFY_TOPIC:
+        return
+    OUTBOX_ITEMS.append({"topics": list(topics), "title": title, "message": message, "tags": list(tags), "click": click})
+
+
+def _b64u(b):
+    return base64.urlsafe_b64encode(b).decode().rstrip("=")
+
+
+def _trim(s):
+    """Stessa normalizzazione del service worker (spazi e a capo ai bordi): un server può ripulirli senza invalidare la firma."""
+    return str(s).strip(" \t\r\n")
+
+
+def signing_payload(topic, title, message, click, ts):
+    return "\n".join([SIGN_VERSION, _trim(topic), _trim(title), _trim(message), _trim(click), str(int(ts))]).encode("utf-8")
+
+
+def signed_tags(topic, title, message, click, tags, ts=None):
+    """Se è impostato il secret NTFY_SIGN_KEY, aggiunge ai tag data e firma Ed25519 della notifica.
+    L'argomento ntfy è pubblico (sta in config.json): la firma permette all'app di scartare i messaggi non nostri."""
+    raw = os.environ.get("NTFY_SIGN_KEY", "").strip()
+    if not raw:
+        return list(tags)
+    try:
+        seed = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
+        ts = int(ts or time.time())
+        sig = ed25519.sign(seed, signing_payload(topic, title, message, click, ts))
+        return list(tags) + [f"ts:{ts}", "sig:" + _b64u(sig)]
+    except Exception as e:  # noqa
+        print(f"  firma non riuscita ({e}): notifica inviata senza firma", file=sys.stderr)
+        return list(tags)
+
+
 def ntfy_send(topics, title, message, tags, click=""):
     if not NTFY_TOPIC:
         return
-    payload = {"title": title, "message": message, "tags": tags}
-    if click or SITE_URL:
-        payload["click"] = click or SITE_URL
+    click = click or SITE_URL
     for topic in topics:
+        payload = {"topic": topic, "title": title, "message": message, "tags": signed_tags(topic, title, message, click, tags)}
+        if click:
+            payload["click"] = click
         try:
-            http(NTFY_URL, data=json.dumps({**payload, "topic": topic}).encode("utf-8"), headers={"Content-Type": "application/json"}, retries=2)
+            http(NTFY_URL, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"}, retries=2)
         except Exception as e:  # noqa
             print(f"  notifica non inviata ({topic}): {e}", file=sys.stderr)
+
+
+def write_outbox():
+    """Scrive la coda su disco (o elimina quella vecchia). outbox.json non va nel repository: serve solo al passo `--send`."""
+    if OUTBOX_ITEMS:
+        with open(OUTBOX, "w", encoding="utf-8") as f:
+            json.dump(OUTBOX_ITEMS, f, ensure_ascii=False)
+    elif os.path.exists(OUTBOX):
+        os.remove(OUTBOX)
+
+
+def send_outbox():
+    """Invia le notifiche accodate (passo del workflow successivo al salvataggio)."""
+    try:
+        with open(OUTBOX, encoding="utf-8") as f:
+            items = json.load(f)
+    except FileNotFoundError:
+        print("Nessuna notifica da inviare.")
+        return 0
+    os.remove(OUTBOX)  # prima di inviare: un'esecuzione ripetuta non deve rimandare le stesse notifiche
+    for m in items:
+        ntfy_send(m["topics"], m["title"], m["message"], m.get("tags", []), m.get("click", ""))
+    print(f"Notifiche inviate: {len(items)}")
+    return len(items)
 
 
 def notify(name, item, appid):
@@ -417,14 +532,14 @@ def notify(name, item, appid):
     body = (item.get("title") or "Nuova pubblicazione su Steam") + ("\n" + item["summary"][:300] if item.get("summary") else "")
     if item.get("patch"):
         # un canale per tutti i giochi (compatibilità) e uno per ogni gioco
-        ntfy_send([NTFY_TOPIC, f"{NTFY_TOPIC}-{appid}"], f"{name}: nuovo aggiornamento", body, ["video_game"])
+        enqueue([NTFY_TOPIC, f"{NTFY_TOPIC}-{appid}"], f"{name}: nuovo aggiornamento", body, ["video_game"])
     else:
-        ntfy_send([f"{NTFY_TOPIC}-{appid}-news"], f"{name}: novità", body, ["loudspeaker"])
+        enqueue([f"{NTFY_TOPIC}-{appid}-news"], f"{name}: novità", body, ["loudspeaker"])
 
 
 def notify_sale(name, appid, price):
     line = f"-{price['discount']}%: {price['final']}" + (f" (invece di {price['initial']})" if price.get("initial") else "")
-    ntfy_send([f"{NTFY_TOPIC}-{appid}-sale"], f"{name} è in sconto", line, ["moneybag"], f"https://store.steampowered.com/app/{appid}/")
+    enqueue([f"{NTFY_TOPIC}-{appid}-sale"], f"{name} è in sconto", line, ["moneybag"], f"https://store.steampowered.com/app/{appid}/")
 
 
 def send_digest(games, since):
@@ -435,7 +550,7 @@ def send_digest(games, since):
             continue
         n = len(fresh)
         title = f"{g['name']}: {n} aggiornament{'o' if n == 1 else 'i'} oggi"
-        ntfy_send([f"{NTFY_TOPIC}-{g['appid']}-digest"], title, "\n".join("• " + (i.get("title") or "Aggiornamento") for i in fresh[:6]), ["newspaper"])
+        enqueue([f"{NTFY_TOPIC}-{g['appid']}-digest"], title, "\n".join("• " + (i.get("title") or "Aggiornamento") for i in fresh[:6]), ["newspaper"])
         print(f"RIEPILOGO {g['name']}: {n}")
 
 
@@ -499,15 +614,21 @@ def main():
         digest_ts = now
     add_translations(games)
     ntfy_key = fetch_ntfy_key() or prev.get("ntfy_key", "")
-    changed = (games != (pg if isinstance(pg, list) else None) or ntfy_key != prev.get("ntfy_key", "")
-               or digest_ts != prev.get("digest_ts"))
+    news_changed = (games != (pg if isinstance(pg, list) else None) or ntfy_key != prev.get("ntfy_key", "")
+                    or digest_ts != prev.get("digest_ts"))
+    players_changed = False
     if ok == 0:
         print("Nessun gioco aggiornato.", file=sys.stderr)
-        changed = False
-    if changed:
+        news_changed = False
+        OUTBOX_ITEMS.clear()  # dati non salvati: niente notifiche
+    else:
+        players_changed = update_players(games, now)
+    if news_changed:
         os.makedirs("data", exist_ok=True)
         with open(OUT, "w", encoding="utf-8") as f:
             json.dump({"updated": now, "ntfy_key": ntfy_key, "digest_ts": digest_ts, "games": games}, f, ensure_ascii=False, separators=(",", ":"))
+    changed = news_changed or players_changed
+    write_outbox()
     out = os.environ.get("GITHUB_OUTPUT")
     if out:
         with open(out, "a") as f:
@@ -515,4 +636,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if "--send" in sys.argv[1:]:
+        send_outbox()
+    else:
+        main()
