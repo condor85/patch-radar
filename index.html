@@ -2,6 +2,9 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
+<!-- Difesa in profondità: anche se qualcuno riuscisse a iniettare codice, non potrebbe mandare dati (es. il token admin) a domini non elencati.
+     Se aggiungi un servizio esterno al codice, aggiungilo anche qui. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.steamstatic.com; connect-src 'self' https://api.steampowered.com https://store.steampowered.com https://api.github.com https://translate.googleapis.com https://api.mymemory.translated.net https://ntfy.sh https://api.allorigins.win https://proxy.cors.dev https://corsproxy.io https://api.codetabs.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-src 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0c1118">
 <script>try{var t=localStorage.getItem("game_patch_radar_theme_v1");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;var z=Number(localStorage.getItem("game_patch_radar_font_v1"));if(z>=0.9&&z<=1.3)document.documentElement.style.setProperty("--tz",z)}catch(e){}</script>
@@ -255,7 +258,7 @@ main{max-width:880px;margin:0 auto;padding:12px}
 </div>
 
 <script>
-const APP_VERSION = "2026-11-12.3";
+const APP_VERSION = "2026-11-13.1";
 /* Se online c'è una versione più recente dell'app, la ricarica da sola (una volta sola per versione). */
 (async () => {
  if (location.protocol === "file:") return;
@@ -776,6 +779,7 @@ async function gh(path, opt = {}) {
  const r = await fetch("https://api.github.com" + path, {...opt, headers: {Accept: "application/vnd.github+json", Authorization: "Bearer " + adminToken, "X-GitHub-Api-Version": "2022-11-28", ...(opt.headers || {})}});
  if (!r.ok) {
   let m = ""; try { m = (await r.json()).message; } catch {}
+  if (r.status === 401) { adminToken = ""; try { localStorage.removeItem(ADMIN_KEY); } catch {} }  // token scaduto o revocato: non tenerlo
   const e = new Error(r.status === 401 ? "Token non valido o scaduto." : (r.status === 403 || r.status === 404) ? "Il token non ha accesso a questo repository (serve il permesso «Contents: Read and write»)." : (m || "Errore GitHub " + r.status));
   e.status = r.status; throw e;
  }
@@ -814,8 +818,12 @@ function msgEl(box, text, ok) { let m = box.querySelector(".msg"); if (!m) { m =
 function afterGamesChange() { ensureSelected(); render(); renderAdmin(); refreshAll(); }
 
 async function adminAdd(g) {
- await editFile("games.json", o => { o.games = o.games || []; if (!o.games.some(x => Number(x.appid) === Number(g.appid))) o.games.push(g.name ? {appid: Number(g.appid), name: g.name} : {appid: Number(g.appid)}); return o; }, "Aggiungi " + (g.name || g.appid));
- pending.add.push({appid: Number(g.appid), name: g.name || "", ts: Date.now()}); savePending();
+ // I risultati di ricerca passano da proxy di terzi: appid e nome si controllano prima di scriverli nel repository
+ const appid = Number(g.appid);
+ if (!Number.isInteger(appid) || appid <= 0) throw new Error("Numero app Steam non valido.");
+ const name = String(g.name || "").replace(/[<>\u0000-\u001f\u007f]/g, "").trim().slice(0, 80);
+ await editFile("games.json", o => { o.games = o.games || []; if (!o.games.some(x => Number(x.appid) === appid)) o.games.push(name ? {appid, name} : {appid}); return o; }, "Aggiungi " + (name || appid));
+ pending.add.push({appid, name, ts: Date.now()}); savePending();
  setGames(applyPending(currentList()));
  toast("✓ Gioco aggiunto. Per tutti gli altri compare in circa un minuto.");
  afterGamesChange();
@@ -851,7 +859,7 @@ async function renderAdmin() {
   box.append(
    h("p", {}, "Per aggiungere o togliere giochi serve un token personale GitHub. Solo chi lo ha può modificare l'elenco. Lo crei una volta sola:"),
    h("ol", {}, h("li", {}, "Apri ", h("a", {href: "https://github.com/settings/personal-access-tokens/new", target: "_blank", rel: "noopener noreferrer", style: "color:var(--accent)"}, "github.com/settings/personal-access-tokens/new")),
-    h("li", {}, "Nome a piacere, scadenza «No expiration» (o la più lunga)."),
+    h("li", {}, "Nome a piacere, scadenza di 90 giorni (il token resta salvato nel browser: meglio che non duri per sempre; alla scadenza ne crei uno nuovo)."),
     h("li", {}, "Repository access → Only select repositories → scegli «" + (repoName().split("/")[1] || "patch-radar") + "»."),
     h("li", {}, "Permissions → Repository permissions → Contents: «Read and write»."),
     h("li", {}, "Generate token, copialo e incollalo qui sotto.")),
@@ -1127,6 +1135,12 @@ async function refreshAll(manual = false) {
  const btn = $("refreshBtn");
  if (btn.disabled) return;
  btn.disabled = true; btn.textContent = "…";
+ // try/finally: se qualcosa va storto il pulsante non deve restare bloccato (bloccherebbe anche l'aggiornamento automatico)
+ try { await doRefresh(manual); }
+ catch (e) { setStatus("Aggiornamento non riuscito: " + ((e && e.message) || e) + ". Premi «Aggiorna» per riprovare.", "error"); }
+ finally { btn.disabled = false; btn.textContent = "↻"; }
+}
+async function doRefresh(manual) {
  if (manual || !cache[selected]) setStatus("Recupero le ultime pubblicazioni…");
  snapshot = await loadSnapshot();
  if (snapshot && snapshot.games.length) { setGames(applyPending(snapshot.games)); save(); }
@@ -1142,7 +1156,9 @@ async function refreshAll(manual = false) {
  } else {
   const g = GAMES[selected];
   setStatus("Non riesco a raggiungere Steam. Premi «Aggiorna» per riprovare. (" + failedSelected.message + ")", "error");
-  $("cards").innerHTML = `<div class="empty">Connessione non riuscita.<br><br><a style="color:var(--accent)" href="${g.store}" target="_blank" rel="noopener">Apri la pagina Steam di ${g.name} ↗</a></div>`;
+  // Il nome del gioco arriva da dati esterni (Steam, games.json): mai dentro una stringa HTML
+  $("cards").replaceChildren(h("div", {class: "empty"}, "Connessione non riuscita.", h("br"), h("br"),
+   h("a", {style: "color:var(--accent)", href: g.store, target: "_blank", rel: "noopener noreferrer"}, "Apri la pagina Steam di " + g.name + " ↗")));
  }
  if (!autoPicked) {
   autoPicked = true;
@@ -1153,7 +1169,6 @@ async function refreshAll(manual = false) {
  lastTotal = tot;
  if (firstRun && !failedSelected) { setStatus("Prima apertura: da ora ti segnalo i nuovi aggiornamenti dei tuoi giochi.", "ok"); firstRun = false; }
  if (cache[selected]) refreshViews();
- btn.disabled = false; btn.textContent = "↻";
 }
 
 $("refreshBtn").addEventListener("click", () => refreshAll(true));
