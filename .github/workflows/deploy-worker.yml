@@ -1,0 +1,91 @@
+name: Installa ponte Cloudflare
+
+# Pubblica il ponte di amministrazione (worker/) su Cloudflare e scrive il suo indirizzo in config.json ("adminApi").
+# Si avvia da solo quando cambia worker/, oppure a mano: Actions → «Installa ponte Cloudflare» → Run workflow.
+#
+# Secret richiesti (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN  token Cloudflare col modello «Edit Cloudflare Workers»
+#   CLOUDFLARE_ACCOUNT_ID ID dell'account Cloudflare
+#   BRIDGE_GITHUB_TOKEN   token GitHub fine-grained, solo questo repository, Contents: Read and write
+#   ADMIN_PASSWORD        password lunga (almeno 12 caratteri) da usare nell'app
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["worker/**", ".github/workflows/deploy-worker.yml"]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - name: Controlla i secret
+        env:
+          A: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          B: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          C: ${{ secrets.BRIDGE_GITHUB_TOKEN }}
+          D: ${{ secrets.ADMIN_PASSWORD }}
+        run: |
+          missing=""
+          [ -z "$A" ] && missing="$missing CLOUDFLARE_API_TOKEN"
+          [ -z "$B" ] && missing="$missing CLOUDFLARE_ACCOUNT_ID"
+          [ -z "$C" ] && missing="$missing BRIDGE_GITHUB_TOKEN"
+          [ -z "$D" ] && missing="$missing ADMIN_PASSWORD"
+          if [ -n "$missing" ]; then echo "::error::Mancano i secret:$missing"; exit 1; fi
+          if [ ${#D} -lt 12 ]; then echo "::error::ADMIN_PASSWORD deve avere almeno 12 caratteri"; exit 1; fi
+
+      - name: Pubblica il ponte
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          command: deploy
+          secrets: |
+            GITHUB_TOKEN
+            ADMIN_PASSWORD
+        env:
+          GITHUB_TOKEN: ${{ secrets.BRIDGE_GITHUB_TOKEN }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+
+      - name: Scrivi l'indirizzo del ponte in config.json
+        env:
+          URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          if [ -z "$URL" ]; then echo "::error::Indirizzo del ponte non trovato nel risultato del deploy"; exit 1; fi
+          python3 - <<'PY'
+          import json, os
+          url = os.environ["URL"].rstrip("/")
+          cfg = json.load(open("config.json"))
+          if cfg.get("adminApi") == url:
+              print("adminApi già impostato:", url)
+          else:
+              cfg["adminApi"] = url
+              with open("config.json", "w") as f:
+                  json.dump(cfg, f, indent=2, ensure_ascii=False)
+                  f.write("\n")
+              print("adminApi impostato:", url)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add config.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Imposta l'indirizzo del ponte di amministrazione"
+            git push || (git pull --rebase -X theirs origin main && git push)
+            # un push fatto da qui non avvia gli altri workflow: ripubblichiamo il sito a mano
+            GH_TOKEN="${{ github.token }}" gh workflow run update.yml --ref main
+          fi

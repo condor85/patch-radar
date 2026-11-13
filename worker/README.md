@@ -1,5 +1,19 @@
 # Ponte di amministrazione (Cloudflare Worker)
 
+## Metodo rapido (consigliato): installazione automatica
+Serve solo creare 4 secret in GitHub (Settings → Secrets and variables → Actions); poi Actions → «Installa ponte Cloudflare» → Run workflow.
+Il workflow pubblica il ponte, imposta le variabili e scrive `adminApi` in `config.json` da solo.
+
+| Secret | Valore |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | Cloudflare → My Profile → API Tokens → Create Token → modello «Edit Cloudflare Workers» |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare → Workers & Pages (colonna destra) → Account ID |
+| `BRIDGE_GITHUB_TOKEN` | token GitHub fine-grained, solo `patch-radar`, Contents: Read and write |
+| `ADMIN_PASSWORD` | una frase lunga (almeno 12 caratteri) |
+
+Prima volta: apri una volta *Workers & Pages* su Cloudflare e, se te lo chiede, scegli il nome del tuo sottodominio `workers.dev`.
+
+## Metodo manuale
 Serve a **aggiungere o togliere giochi dall'app senza toccare GitHub**: sul telefono inserisci una password, il token GitHub
 resta sul ponte e non esce mai da lì. Il ponte controlla su Steam che il gioco esista e ne legge il nome da solo.
 
