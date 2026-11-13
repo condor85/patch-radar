@@ -225,6 +225,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
  <section class="content">
   <div class="game-head">
    <div><h2 id="gameTitle">Valheim</h2><div class="count" id="count">Caricamento…</div><div class="meta" id="meta"></div></div>
+   <button class="abtn sq" id="bellBtn" type="button" hidden></button>
   </div>
   <div class="filters" id="filters" aria-label="Filtri"></div>
   <div class="searchbar" id="searchbar" hidden><input type="search" id="q" placeholder="Cerca nelle patch (es. spada, nerf)…" autocomplete="off" enterkeyhint="search" aria-label="Cerca nelle patch"><button class="abtn" id="qClear" type="button" aria-label="Cancella la ricerca">✕</button></div>
@@ -283,7 +284,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
 </div>
 
 <script>
-const APP_VERSION = "2026-11-13.3";
+const APP_VERSION = "2026-11-13.4";
 /* Se online c'è una versione più recente dell'app, la ricarica da sola (una volta sola per versione). */
 (async () => {
  if (location.protocol === "file:") return;
@@ -1259,7 +1260,7 @@ function render() {
  const cross = crossGame(), onHome = isHome(), game = GAMES[selected];
  const all = onHome ? [] : baseEntries();
  if (!onHome && !cross && cache[selected]) viewed[selected] = true;
- renderNav(); renderBanner(); renderStale(); renderMeta(); renderFilters(); updateTitle();
+ renderNav(); renderBanner(); renderStale(); renderMeta(); renderFilters(); renderBell(); updateTitle();
  $("gameTitle").textContent = savedView ? "★ Salvati" : query.trim() ? "Ricerca" : onHome ? "Ultime patch" : game.name;
  const box = $("cards"); box.innerHTML = ""; box.classList.toggle("home", onHome);
  if (onHome) { renderHome(box); return; }
@@ -1411,14 +1412,32 @@ async function setMaster(on) {
  saveNotif();
  try { await syncNotif(); toast(on ? "🔔 Notifiche attivate" : "🔕 Notifiche disattivate"); }
  catch (e) { notifPref.on = !on; saveNotif(); notifMsg = ["err", "Non sono riuscito a " + (on ? "attivarle" : "disattivarle") + ": " + e.message]; }
- renderNotif();
+ renderNotif(); renderBell();
 }
 async function setPref(patch, resync = true) {
  Object.assign(notifPref, patch); saveNotif(); notifMsg = null;
  if (resync) { try { await syncNotif(); } catch (e) { notifMsg = ["err", "Salvataggio non riuscito: " + e.message]; } }
  else await postPrefs();
- renderNotif();
+ renderNotif(); renderBell();
 }
+/* Campanella nella pagina di un gioco: segue o silenzia solo le notifiche di quel gioco (visibile se le notifiche sono attive). */
+function renderBell() {
+ const b = $("bellBtn");
+ const show = !isHome() && !crossGame() && !!GAMES[selected] && notifSupported() && notifPref.on && Notification.permission === "granted";
+ b.hidden = !show;
+ if (!show) return;
+ const on = !notifPref.off.includes(selected);
+ b.textContent = on ? "🔔" : "🔕";
+ b.classList.toggle("on", on);
+ const label = on ? "Notifiche attive per questo gioco: tocca per silenziarle" : "Notifiche silenziate per questo gioco: tocca per riattivarle";
+ b.title = label; b.setAttribute("aria-label", label); b.setAttribute("aria-pressed", on ? "true" : "false");
+}
+$("bellBtn").addEventListener("click", async () => {
+ const k = selected, on = notifPref.off.includes(k);   // se era silenziato, lo riattiva
+ await setGameNotif(k, on);
+ toast(on ? "🔔 Notifiche attivate per " + GAMES[k].name : "🔕 Notifiche silenziate per " + GAMES[k].name);
+ renderBell();
+});
 function setGameNotif(k, on) { return setPref({off: on ? notifPref.off.filter(x => x !== k) : [...new Set([...notifPref.off, k])]}); }
 function switchEl(checked, onchange, disabled) {
  const i = h("input", {type: "checkbox"}); i.checked = checked; i.disabled = !!disabled; i.addEventListener("change", () => onchange(i.checked));
