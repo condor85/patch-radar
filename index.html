@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0c1118">
-<script>try{var t=localStorage.getItem("game_patch_radar_theme_v1");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
+<script>try{var t=localStorage.getItem("game_patch_radar_theme_v1");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;var z=Number(localStorage.getItem("game_patch_radar_font_v1"));if(z>=0.9&&z<=1.3)document.documentElement.style.setProperty("--tz",z)}catch(e){}</script>
 <meta name="description" content="Note di aggiornamento dei tuoi giochi Steam, con traduzione in italiano e avviso sui nuovi aggiornamenti.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
@@ -28,7 +28,7 @@ button{font:inherit;cursor:pointer}
 .date{font-size:11px;color:var(--muted)}
 .tag{font-size:10px;border:1px solid var(--tag-line);color:var(--tag-text);border-radius:99px;padding:3px 8px;white-space:nowrap}
 .card h3{font-size:15px;line-height:1.35;margin:0 0 9px}
-.summary{font-size:13px;color:var(--body-text);overflow-wrap:anywhere}
+.summary{font-size:calc(13px*var(--tz,1));color:var(--body-text);overflow-wrap:anywhere}
 .warn{margin-top:10px;font-size:11px;color:var(--warn);border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:9px;padding:7px 10px}
 .more{display:inline-block;margin-top:12px;color:var(--accent);text-decoration:none;font-size:12px;font-weight:700}
 .more:hover{text-decoration:underline}
@@ -50,7 +50,7 @@ footer a{color:var(--link)}
 .v-inner{max-width:820px;margin:0 auto}
 .v-inner .date{display:block;margin-bottom:6px}
 .v-inner h2{font-size:22px;line-height:1.3;margin:0 0 14px}
-.v-text{font-size:15px;line-height:1.65;color:var(--rich-text);overflow-wrap:anywhere}
+.v-text{font-size:calc(15px*var(--tz,1));line-height:1.65;color:var(--rich-text);overflow-wrap:anywhere}
 .v-note{font-size:11px;color:var(--muted);margin-top:18px}
 @keyframes pulse{50%{opacity:.45}}
 .tag.new{border-color:var(--green-line);background:var(--green-bg);color:var(--green);font-weight:800}
@@ -64,7 +64,7 @@ footer a{color:var(--link)}
 .toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;pointer-events:none;background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-line);border-radius:12px;padding:10px 14px;font-size:13px;font-weight:650;z-index:60;transition:.3s;max-width:calc(100vw - 32px)}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .by{font-size:11px;font-weight:650;color:var(--muted);margin-left:6px;letter-spacing:.3px;white-space:nowrap}
-.rich h4{margin:12px 0 4px;font-size:14px;line-height:1.3;color:var(--accent)}
+.rich h4{margin:12px 0 4px;font-size:calc(14px*var(--tz,1));line-height:1.3;color:var(--accent)}
 .rich h4:first-child{margin-top:0}
 .rich p{margin:0 0 6px}
 .rich ul{margin:2px 0 9px;padding-left:19px}
@@ -136,6 +136,48 @@ main{max-width:880px;margin:0 auto;padding:12px}
  .card h3{font-size:14.5px}
  .game-head h2{font-size:18px}
 }
+
+.meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.meta:empty{display:none}
+.mchip{font-size:11px;border:1px solid var(--line);border-radius:99px;padding:2px 9px;color:var(--muted);background:var(--soft);text-decoration:none;white-space:nowrap}
+.mchip.sale{color:var(--green);border-color:var(--green-line);background:var(--green-bg);font-weight:700}
+.filters{display:flex;gap:7px;overflow-x:auto;margin:0 -2px 10px;padding:2px;scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.fchip{flex:0 0 auto;border:1px solid var(--line);background:var(--soft);color:var(--muted);border-radius:99px;padding:5px 11px;font-size:12px;font-weight:650;white-space:nowrap}
+.fchip.on{color:var(--accent);border-color:var(--sel-line);background:var(--sel-bg)}
+.searchbar{display:flex;gap:8px;margin:0 0 10px}
+.searchbar[hidden]{display:none}
+.searchbar input{flex:1;min-width:0;background:var(--panel);color:var(--text);border:1px solid var(--btn-line);border-radius:10px;padding:9px 12px;font:inherit;font-size:14px}
+.lbls{display:flex;flex-wrap:wrap;gap:5px;margin:-2px 0 8px}
+.lbl{font-size:10px;font-weight:700;border-radius:99px;padding:2px 8px;border:1px solid var(--line);color:var(--muted)}
+.lbl.new{color:var(--green);border-color:var(--green-line);background:var(--green-bg)}
+.lbl.balance{color:var(--warn);border-color:var(--warn-line);background:var(--warn-bg)}
+.lbl.perf{color:var(--tag-text);border-color:var(--tag-line)}
+.gname{font-size:11px;font-weight:700;color:var(--accent)}
+.snip{margin:0 0 8px;font-size:12.5px;color:var(--body-text);overflow-wrap:anywhere}
+.snip mark{background:var(--warn-bg);color:var(--text);border-radius:3px;padding:0 2px}
+.alert{margin:0 0 10px;font-size:12px;color:var(--warn);border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:12px;padding:9px 12px}
+.alert[hidden]{display:none}
+.moreBtn{display:block;width:100%;margin-top:4px}
+.step{display:flex;gap:12px;align-items:flex-start;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--panel);margin:10px 0}
+.step .n{width:28px;height:28px;border-radius:50%;background:var(--sel-bg);display:grid;place-items:center;font-weight:800;flex:0 0 auto}
+.step.done{border-color:var(--green-line)}
+.step.done .n{background:var(--green-bg);color:var(--green)}
+.step h4{margin:2px 0 3px;font-size:15px}
+.step p{margin:0 0 8px;font-size:13px;color:var(--muted)}
+.qr{background:#fff;padding:10px;border-radius:14px;display:inline-block;line-height:0}
+.qr svg{width:210px;height:210px;display:block}
+.center{text-align:center}
+.tin{background:var(--bg);color:var(--text);border:1px solid var(--btn-line);border-radius:10px;padding:7px 9px;font:inherit;font-size:14px}
+.rgame{display:flex;align-items:center;gap:8px;margin:18px 0 6px}
+.rgame .cover{width:46px;height:22px;object-fit:cover;border-radius:7px;background:var(--soft)}
+.rgame b{font-size:15px}
+.rcard{border:1px solid var(--green-line);border-radius:13px;padding:12px;margin:8px 0;background:var(--panel)}
+.rcard h3{margin:2px 0 6px;font-size:14.5px;line-height:1.35}
+.rcard .rs{font-size:12.5px;color:var(--body-text);white-space:pre-line;overflow-wrap:anywhere}
+.v-bar{gap:6px}
+.v-bar .ibtn{width:34px;height:34px}
+.seg{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
 </style>
 </head>
 <body>
@@ -153,10 +195,12 @@ main{max-width:880px;margin:0 auto;padding:12px}
 <main>
  <section class="content">
   <div class="game-head">
-   <div><h2 id="gameTitle">Valheim</h2><div class="count" id="count">Caricamento…</div></div>
-   <label class="tgl" id="patchTgl"><input type="checkbox" id="onlyPatch"> Solo patch</label>
+   <div><h2 id="gameTitle">Valheim</h2><div class="count" id="count">Caricamento…</div><div class="meta" id="meta"></div></div>
   </div>
+  <div class="filters" id="filters" aria-label="Filtri"></div>
+  <div class="searchbar" id="searchbar" hidden><input type="search" id="q" placeholder="Cerca nelle patch (es. spada, nerf)…" autocomplete="off" enterkeyhint="search" aria-label="Cerca nelle patch"><button class="abtn" id="qClear" type="button" aria-label="Cancella la ricerca">✕</button></div>
   <div class="banner" id="banner" hidden></div>
+  <div class="alert" id="stale" hidden></div>
   <div class="status" id="status"><span class="spinner"></span>Sto recuperando le ultime note…</div>
   <div class="cards" id="cards"></div>
  </section>
@@ -178,23 +222,40 @@ main{max-width:880px;margin:0 auto;padding:12px}
   <div id="nList"></div>
   <h3 class="sec">🎨 Aspetto</h3>
   <div class="row-btns" id="themeRow"></div>
+  <div class="row-btns" id="fontRow" aria-label="Dimensione del testo"></div>
+  <h3 class="sec">👥 Condividi l'app</h3>
+  <div class="row-btns"><button class="abtn" id="inviteBtn" type="button">Invita un amico</button><button class="abtn" id="guideBtn" type="button">❓ Guida di benvenuto</button></div>
   <details class="admin" id="adminDet"><summary>🔧 Amministratore</summary><div class="adm" id="adminBox"></div></details>
  </div></div>
+</div>
+<div class="viewer" id="recap" role="dialog" aria-modal="true" aria-label="Riepilogo delle novità">
+ <div class="v-bar"><button class="abtn" id="rClose" type="button">✕ Chiudi</button></div>
+ <div class="v-body"><div class="v-inner" id="recapBody"></div></div>
+</div>
+<div class="viewer" id="welcome" role="dialog" aria-modal="true" aria-label="Benvenuto">
+ <div class="v-body"><div class="v-inner" id="welcomeBody"></div></div>
+</div>
+<div class="viewer" id="invite" role="dialog" aria-modal="true" aria-label="Invita un amico">
+ <div class="v-bar"><button class="abtn" id="iClose" type="button">✕ Chiudi</button></div>
+ <div class="v-body"><div class="v-inner center" id="inviteBody"></div></div>
 </div>
 <div class="ptr" id="ptr">↓ Trascina per aggiornare</div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label="Note di rilascio a schermo intero">
  <div class="v-bar">
-  <button class="abtn" id="vClose" type="button">✕ Chiudi</button>
-  <button class="abtn" id="vTr" type="button">🌐 Traduci in italiano</button>
+  <button class="ibtn" id="vClose" type="button" aria-label="Chiudi" title="Chiudi">✕</button>
+  <button class="abtn" id="vTr" type="button">🌐 Italiano</button>
   <span class="spacer"></span>
-  <a class="more" id="vLink" target="_blank" rel="noopener noreferrer" style="margin:0">Apri su Steam ↗</a>
+  <button class="ibtn" id="vSmaller" type="button" aria-label="Testo più piccolo" title="Testo più piccolo">A−</button>
+  <button class="ibtn" id="vBigger" type="button" aria-label="Testo più grande" title="Testo più grande">A+</button>
+  <button class="ibtn" id="vPrev" type="button" aria-label="Pubblicazione più recente" title="Più recente">‹</button>
+  <button class="ibtn" id="vNext" type="button" aria-label="Pubblicazione meno recente" title="Meno recente">›</button>
  </div>
- <div class="v-body"><div class="v-inner" id="vInner"></div></div>
+ <div class="v-body" id="vBody"><div class="v-inner" id="vInner"></div></div>
 </div>
 
 <script>
-const APP_VERSION = "2026-11-12.2";
+const APP_VERSION = "2026-11-12.3";
 /* Se online c'è una versione più recente dell'app, la ricarica da sola (una volta sola per versione). */
 (async () => {
  if (location.protocol === "file:") return;
@@ -210,8 +271,11 @@ const DEFAULT_GAMES = [
 ];
 const PATCH_KEY = "game_patch_radar_onlypatch_v1";
 let onlyPatch = false;
-function loadPatchPref() { try { onlyPatch = localStorage.getItem(PATCH_KEY) === "1"; } catch {} $("onlyPatch").checked = onlyPatch; $("patchTgl").classList.toggle("on", onlyPatch); }
+function loadPatchPref() { try { onlyPatch = localStorage.getItem(PATCH_KEY) === "1"; } catch {} }
+function setOnlyPatch(v) { onlyPatch = v; try { localStorage.setItem(PATCH_KEY, v ? "1" : "0"); } catch {} showLimit = PAGE; render(); }
+/* Il server (GitHub Action) classifica già ogni annuncio; il calcolo qui sotto serve solo per i dati scaricati direttamente da Steam. */
 function isPatchItem(it) {
+ if (typeof it.patch === "boolean") return it.patch;
  if ((it.tags || []).includes("patchnotes")) return true;
  const t = (it.title || "").toLowerCase();
  if (/patch|hotfix|hot fix|update|changelog|release notes|\bfix(es)?\b|\bv?\d+\.\d+|\bbuild \d+|aggiornamento/.test(t)) return true;
@@ -226,7 +290,7 @@ function setGames(list) {
  const g = {};
  for (const x of list) {
   const k = String(x.appid);
-  g[k] = {name: x.name || ("Gioco " + k), appid: x.appid, image: x.image || "", store: "https://store.steampowered.com/app/" + x.appid + "/"};
+  g[k] = {name: x.name || ("Gioco " + k), appid: x.appid, image: x.image || "", price: x.price || null, store: "https://store.steampowered.com/app/" + x.appid + "/"};
  }
  GAMES = g; ORDER = list.map(x => String(x.appid)).filter((k, i, a) => a.indexOf(k) === i);
 }
@@ -247,15 +311,20 @@ function applyPending(list) {
  const gone = new Set(pending.remove.map(g => String(g.id)));
  return list.filter(g => !gone.has(String(g.appid))).concat(pending.add.map(g => ({appid: g.appid, name: g.name, image: ""})));
 }
-function currentList() { return ORDER.map(k => ({appid: GAMES[k].appid, name: GAMES[k].name, image: GAMES[k].image})); }
+function currentList() { return ORDER.map(k => ({appid: GAMES[k].appid, name: GAMES[k].name, image: GAMES[k].image, price: GAMES[k].price})); }
 const STORE_KEY = "game_patch_radar_v3";
 const REFRESH_MS = 30 * 60 * 1000;
 const PREVIEW_CHARS = 700;
 const ELLIPSIS = /(\.\.\.|…)\s*$/;
 
 let selected = "892970";
-let viewerItem = null;
 let lastRefresh = 0;
+const PAGE = 20;
+let showLimit = PAGE;       // quante schede mostrare
+let query = "";             // testo cercato (cerca in tutti i giochi)
+let searchOpen = false;
+let savedView = false;      // mostra solo le patch salvate
+const labelFilter = new Set();
 const cache = {};      // gioco -> [annunci]
 const trCache = {};    // chiave annuncio -> {title, text}
 const showIt = {};     // chiave -> mostra italiano
@@ -276,8 +345,19 @@ function loadSeen() {
  try { const d = JSON.parse(localStorage.getItem(SEEN_KEY) || "null"); if (d) { seen = d.seen || {}; lastVisit = prevVisit = d.lastVisit || 0; } } catch {}
 }
 function saveSeen() { try { localStorage.setItem(SEEN_KEY, JSON.stringify({seen, lastVisit})); } catch {} }
-function isNew(key, item) { return !!seen[key] && !seen[key].includes(String(item.gid)); }
-function newItems(key) { return (cache[key] || []).filter(it => isNew(key, it)); }
+/* Una pubblicazione è nuova se non l'hai ancora vista ed è più recente dell'ultima che hai visto:
+   così lo storico più vecchio, scaricato dopo, non viene scambiato per novità. */
+function maxSeenDate(key) {
+ let m = 0; const s = seen[key] || [];
+ for (const it of cache[key] || []) if (s.includes(String(it.gid)) && it.date > m) m = it.date;
+ return m;
+}
+function newItems(key) {
+ if (!seen[key]) return [];
+ const m = maxSeenDate(key);
+ return (cache[key] || []).filter(it => !seen[key].includes(String(it.gid)) && it.date > m);
+}
+function isNew(key, item) { return newItems(key).includes(item); }
 function totalNew() { return visibleKeys().reduce((n, k) => n + newItems(k).length, 0); }
 function baselineSeen() {
  const fresh = Object.keys(seen).length === 0;
@@ -337,15 +417,17 @@ function renderBanner() {
  }
  const all = document.createElement("button"); all.type = "button"; all.className = "abtn"; all.textContent = "✓ Segna tutto come letto";
  all.addEventListener("click", markAllRead);
+ const recap = mkBtn("📋 Riepilogo", openRecap);
  const chips = document.createElement("div"); chips.className = "chips";
  for (const [k, n] of parts) {
   const c = document.createElement("button"); c.type = "button"; c.className = "chip"; c.textContent = GAMES[k].name + " · " + n;
   c.addEventListener("click", () => selectGame(k)); chips.append(c);
  }
- el.append(t, all, chips);
+ el.append(t, recap, all, chips);
 }
 function selectGame(k) {
- if (k !== selected && viewed[selected]) markRead(selected);
+ if (k !== selected && viewed[selected] && !crossGame()) markRead(selected);
+ query = ""; savedView = false; searchOpen = false; $("q").value = ""; showLimit = PAGE;
  selected = k; render();
  if (cache[selected]) setStatus("Dati caricati · premi Aggiorna per verificare eventuali novità", "ok");
  else refreshAll();
@@ -353,9 +435,9 @@ function selectGame(k) {
 
 /* ---------- Salvataggio locale (opzionale, mai bloccante) ---------- */
 function persistable() {
- const c = {}; for (const [k, v] of Object.entries(cache)) c[k] = v.map(({it, ...r}) => r);
+ const c = {}; for (const [k, v] of Object.entries(cache)) c[k] = v.slice(0, 20).map(({it, ...r}) => r);
  const tc = {}; for (const [k, v] of Object.entries(trCache)) if (v.src !== "gemini") tc[k] = v;
- return {cache: c, trCache: tc, games: Object.values(GAMES).map(g => ({appid: g.appid, name: g.name, image: g.image}))};
+ return {cache: c, trCache: tc, games: Object.values(GAMES).map(g => ({appid: g.appid, name: g.name, image: g.image, price: g.price}))};
 }
 function save() {
  const d = persistable();
@@ -448,9 +530,9 @@ const ROUTES = [
  u => "https://api.codetabs.com/v1/proxy/?quest=" + encodeURIComponent(u)
 ];
 let routePref = 0;
-async function fetchJSON(target, valid, timeout = 10000) {
+async function fetchJSON(target, valid, timeout = 10000, maxTries = ROUTES.length) {
  let lastErr;
- const order = ROUTES.map((_, i) => i).sort((a, b) => a === routePref ? -1 : b === routePref ? 1 : a - b);
+ const order = ROUTES.map((_, i) => i).sort((a, b) => a === routePref ? -1 : b === routePref ? 1 : a - b).slice(0, maxTries);
  for (const i of order) {
   const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), timeout);
   try {
@@ -584,41 +666,102 @@ async function toggleTranslate(item, btn) {
 }
 function refreshViews() { render(); if (viewerItem) renderViewer(); }
 
-/* ---------- Schermo intero ---------- */
-function openViewer(item) {
- viewerItem = item; renderViewer();
- $("viewer").classList.add("open"); document.body.style.overflow = "hidden";
- document.querySelector(".v-body").scrollTop = 0;
- $("vClose").focus();
+/* ---------- Pannelli a tutto schermo ---------- */
+function openOv(id) { $(id).classList.add("open"); document.body.style.overflow = "hidden"; }
+function closeOv(id) { $(id).classList.remove("open"); if (!document.querySelector(".viewer.open")) document.body.style.overflow = ""; }
+function anyOverlay() { return !!document.querySelector(".viewer.open"); }
+const safeUrl = (u, fallback) => /^https?:\/\//i.test(u || "") ? u : fallback;
+
+/* ---------- Salvate per dopo ---------- */
+const SAVED_KEY = "game_patch_radar_saved_v1";
+let saved = [];   // {id, appid, gid, title, date, url, summary}
+function loadSaved() { try { saved = JSON.parse(localStorage.getItem(SAVED_KEY) || "[]") || []; } catch { saved = []; } }
+function persistSaved() { try { localStorage.setItem(SAVED_KEY, JSON.stringify(saved)); } catch {} }
+const savedId = (key, item) => key + ":" + item.gid;
+function isSaved(key, item) { const id = savedId(key, item); return saved.some(x => x.id === id); }
+function toggleSaved(key, item) {
+ const id = savedId(key, item), i = saved.findIndex(x => x.id === id);
+ if (i >= 0) saved.splice(i, 1);
+ else saved.unshift({id, appid: key, gid: String(item.gid), title: item.title || "", date: item.date || 0, url: item.url || "", summary: item.summary || ""});
+ saved = saved.slice(0, 200);
+ persistSaved();
+ toast(i >= 0 ? "Rimossa dai salvati" : "★ Salvata: la ritrovi nel filtro «Salvati»");
+ if (savedView && !saved.length) savedView = false;
+ refreshViews();
 }
-function closeViewer() {
- viewerItem = null; $("viewer").classList.remove("open"); document.body.style.overflow = "";
+
+/* ---------- Schermo intero, con scorrimento tra le pubblicazioni ---------- */
+let viewerList = [], viewerIdx = -1, viewerItem = null;
+function openViewer(list, i) {
+ viewerList = list; viewerIdx = i; renderViewer();
+ openOv("viewer"); $("vBody").scrollTop = 0; $("vClose").focus();
+}
+function closeViewer() { viewerItem = null; viewerList = []; viewerIdx = -1; closeOv("viewer"); }
+function viewerGo(d) {
+ const j = viewerIdx + d;
+ if (j < 0 || j >= viewerList.length) return;
+ viewerIdx = j; renderViewer(); $("vBody").scrollTop = 0;
 }
 function warnEl() {
  const w = document.createElement("div"); w.className = "warn";
  w.textContent = "⚠ Il testo ricevuto da Steam potrebbe essere incompleto: apri la pubblicazione su Steam per leggerla tutta.";
  return w;
 }
+function summaryBox(item) {
+ const sm = h("div", {class: "sum"}, h("b", {}, "📝 In breve"), item.summary);
+ return sm;
+}
 function renderViewer() {
- const item = viewerItem; if (!item) return;
- const tr = showIt[itemKey(item)] && trCache[itemKey(item)];
+ const entry = viewerList[viewerIdx]; if (!entry) return;
+ const {key, item} = entry, game = GAMES[key] || GAMES[selected];
+ viewerItem = item;
+ const ik = itemKey(item), tr = showIt[ik] && trCache[ik];
  const inner = $("vInner"); inner.innerHTML = "";
- const date = document.createElement("span"); date.className = "date"; date.textContent = dateLabel(item.date);
- const h = document.createElement("h2"); h.textContent = (tr ? tr.title : item.title) || "Aggiornamento";
- const t = document.createElement("div"); t.className = "v-text";
+ const pos = viewerList.length > 1 ? " · " + (viewerIdx + 1) + " di " + viewerList.length : "";
+ const t = h("div", {class: "v-text"});
  renderRich(t, (tr ? tr.text : fullText(item)) || "Apri la pubblicazione per leggere tutti i dettagli.");
- inner.append(date, h);
- if (item.summary) { const sm = document.createElement("div"); sm.className = "sum"; const lb = document.createElement("b"); lb.textContent = "📝 In breve"; sm.append(lb, document.createTextNode(item.summary)); inner.append(sm); }
+ inner.append(h("span", {class: "date"}, dateLabel(item.date) + " · " + game.name + pos), h("h2", {}, (tr ? tr.title : item.title) || "Aggiornamento"));
+ const lb = labelsEl(item); if (lb) inner.append(lb);
+ if (item.summary) inner.append(summaryBox(item));
  inner.append(t);
  if (item.truncated) inner.append(warnEl());
- if (tr) { const n = document.createElement("div"); n.className = "v-note"; n.textContent = "Traduzione automatica (" + (tr.src === "gemini" ? "Gemini" : "Google Translate") + ") — può contenere imprecisioni."; inner.append(n); }
+ if (tr) inner.append(h("div", {class: "v-note"}, "Traduzione automatica (" + (tr.src === "gemini" ? "Gemini" : "Google Translate") + ") — può contenere imprecisioni."));
+ inner.append(h("div", {class: "actions"},
+  mkBtn(isSaved(key, item) ? "★ Salvata" : "☆ Salva", () => toggleSaved(key, item)),
+  mkBtn("↗ Condividi", () => shareItem(item, game.name)),
+  h("a", {class: "more", href: safeUrl(item.url, game.store), target: "_blank", rel: "noopener noreferrer"}, "Apri su Steam ↗")));
  $("vTr").disabled = false;
- $("vTr").textContent = tr ? "↩ Mostra originale" : "🌐 Traduci in italiano";
- $("vLink").href = item.url || GAMES[selected].store;
+ $("vTr").textContent = tr ? "↩ Originale" : "🌐 Italiano";
+ $("vPrev").disabled = viewerIdx <= 0; $("vNext").disabled = viewerIdx >= viewerList.length - 1;
 }
 $("vClose").addEventListener("click", closeViewer);
 $("vTr").addEventListener("click", () => toggleTranslate(viewerItem, $("vTr")));
-document.addEventListener("keydown", e => { if (e.key === "Escape") { closeViewer(); closeManager(); } });
+$("vPrev").addEventListener("click", () => viewerGo(-1));
+$("vNext").addEventListener("click", () => viewerGo(1));
+$("vSmaller").addEventListener("click", () => setFont(fontIdx - 1));
+$("vBigger").addEventListener("click", () => setFont(fontIdx + 1));
+(() => {  // scorri a sinistra/destra per passare da una pubblicazione all'altra
+ const b = $("vBody"); let x0 = null, y0 = 0;
+ b.addEventListener("touchstart", e => { if (e.touches.length !== 1) { x0 = null; return; } x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, {passive: true});
+ b.addEventListener("touchend", e => {
+  if (x0 === null) return;
+  const t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0; x0 = null;
+  if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.6) viewerGo(dx < 0 ? 1 : -1);
+ });
+})();
+function closeTopOverlay() {
+ for (const id of ["viewer", "invite", "welcome", "recap", "manager"]) {
+  if (!$(id).classList.contains("open")) continue;
+  if (id === "viewer") closeViewer(); else if (id === "welcome") finishWelcome(); else closeOv(id);
+  return;
+ }
+}
+document.addEventListener("keydown", e => {
+ if (e.key === "Escape") { closeTopOverlay(); return; }
+ if ($("viewer").classList.contains("open") && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) {
+  if (e.key === "ArrowRight") viewerGo(1); else if (e.key === "ArrowLeft") viewerGo(-1);
+ }
+});
 /* ---------- Amministratore: modifica l'elenco giochi dall'app (serve un token GitHub) ---------- */
 const ADMIN_KEY = "game_patch_radar_admin_v1";
 let CFG = {};
@@ -772,64 +915,204 @@ function openManager() {
   });
   l.append(c, document.createTextNode(GAMES[k].name)); box.append(l);
  }
- $("manager").classList.add("open");
- renderNotif(); renderTheme(); renderAdmin();
+ openOv("manager");
+ renderNotif(); renderTheme(); renderFont(); renderAdmin();
 }
-function closeManager() { $("manager").classList.remove("open"); }
+function closeManager() { closeOv("manager"); }
 $("manageBtn").addEventListener("click", openManager);
 $("mClose").addEventListener("click", closeManager);
 
 /* ---------- Schede ---------- */
-function mkBtn(label, fn) {
- const b = document.createElement("button"); b.type = "button"; b.className = "abtn"; b.textContent = label;
+function mkBtn(label, fn, cls) {
+ const b = document.createElement("button"); b.type = "button"; b.className = "abtn" + (cls ? " " + cls : ""); b.textContent = label;
  b.addEventListener("click", () => fn(b)); return b;
 }
-function render() {
- const game = GAMES[selected];
- $("gameTitle").textContent = game.name;
- const allItems = cache[selected];
- if (allItems) viewed[selected] = true;
- renderNav(); renderBanner(); updateTitle();
-
- $("cards").innerHTML = "";
- if (!allItems) { $("count").textContent = "In attesa dei dati"; return; }
- const total = allItems.length;
- const items = allItems.filter(it => !onlyPatch || isPatchItem(it));
- $("count").textContent = (onlyPatch ? items.length + " di " + total : total) + (total === 1 ? " pubblicazione" : " pubblicazioni");
- if (!items.length) {
-  $("cards").innerHTML = '<div class="empty">' + (onlyPatch && total ? "Nessuna patch tra gli annunci recenti: togli il filtro «Solo patch» per vederli tutti." : "Non risultano annunci recenti per questo gioco.") + '</div>';
-  return;
- }
- for (const item of items) {
-  const key = itemKey(item);
-  const tr = showIt[key] && trCache[key];
-  const fresh = isNew(selected, item);
-  const article = document.createElement("article"); article.className = "card" + (fresh ? " is-new" : "");
-  const top = document.createElement("div"); top.className = "card-top";
-  const date = document.createElement("span"); date.className = "date"; date.textContent = dateLabel(item.date) + (versionOf(item.title) ? " · v" + versionOf(item.title) : "");
-  const tag = document.createElement("span"); tag.className = "tag"; tag.textContent = "STEAM";
-  if (fresh) { const nt = document.createElement("span"); nt.className = "tag new"; nt.textContent = "NUOVO"; top.append(date, nt); }
-  else top.append(date, tag);
-  const title = document.createElement("h3"); title.textContent = (tr ? tr.title : item.title) || "Aggiornamento";
-  const full = (tr ? tr.text : fullText(item)) || "Apri la pubblicazione per leggere tutti i dettagli.";
-  const isLong = full.length > PREVIEW_CHARS;
-  const summary = document.createElement("div"); summary.className = "summary";
-  renderRich(summary, (isLong && !expanded[key]) ? previewOf(full) : full);
-  const actions = document.createElement("div"); actions.className = "actions";
-  if (isLong) actions.append(mkBtn(expanded[key] ? "▴ Riduci" : "▾ Mostra tutto", () => { expanded[key] = !expanded[key]; render(); }));
-  actions.append(mkBtn("⛶ Schermo intero", () => openViewer(item)));
-  actions.append(mkBtn(tr ? "↩ Mostra originale" : "🌐 Traduci in italiano", b => toggleTranslate(item, b)));
-  actions.append(mkBtn("↗ Condividi", () => shareItem(item, game.name)));
-  const link = document.createElement("a"); link.className = "more"; link.href = item.url || game.store;
-  link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = "Apri su Steam ↗";
-  actions.append(link);
-  if (item.summary) { const sm = document.createElement("div"); sm.className = "sum"; const lb = document.createElement("b"); lb.textContent = "📝 In breve"; sm.append(lb, document.createTextNode(item.summary)); article.append(top, title, sm, summary); }
-  else article.append(top, title, summary);
-  if (item.truncated) article.append(warnEl());
-  article.append(actions);
-  $("cards").append(article);
- }
+const LABEL_TXT = {new: "Nuovi contenuti", balance: "Bilanciamento", perf: "Prestazioni", bug: "Correzioni"};
+function labelsEl(item) {
+ const wrap = h("div", {class: "lbls"});
+ if (item.patch === false) wrap.append(h("span", {class: "lbl"}, "Annuncio"));
+ for (const l of item.labels || []) if (LABEL_TXT[l]) wrap.append(h("span", {class: "lbl " + l}, LABEL_TXT[l]));
+ return wrap.childNodes.length ? wrap : null;
 }
+
+/* Ricerca: senza maiuscole e senza accenti, tutte le parole devono comparire (titolo, testo, riassunto, traduzione). */
+const norm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const hayCache = new WeakMap();
+function haystack(item) {
+ let v = hayCache.get(item);
+ if (v === undefined) {
+  v = norm([item.title, fullText(item), item.summary, item.it && item.it.title, item.it && item.it.text].filter(Boolean).join("\n"));
+  hayCache.set(item, v);
+ }
+ return v;
+}
+function tokens() { return norm(query).trim().split(/\s+/).filter(Boolean); }
+function crossGame() { return savedView || !!query.trim(); }
+function snippetOf(item, toks) {
+ if (!toks.length) return null;
+ for (const text of [fullText(item), item.summary || "", (item.it && item.it.text) || ""]) {
+  const n = norm(text), i = n.indexOf(toks[0]);
+  if (i < 0 || n.length !== text.length) continue;
+  const a = Math.max(0, i - 90), b = Math.min(text.length, i + toks[0].length + 150);
+  const piece = text.slice(a, b).replace(/\s+/g, " ");
+  return {piece, lead: a > 0, tail: b < text.length};
+ }
+ return null;
+}
+function snippetEl(item, toks) {
+ const sn = snippetOf(item, toks); if (!sn) return null;
+ const el = h("p", {class: "snip"}); if (sn.lead) el.append("… ");
+ const n = norm(sn.piece);
+ if (n.length !== sn.piece.length) el.append(sn.piece);
+ else {
+  const spans = [];
+  for (const t of toks) for (let i = n.indexOf(t); i >= 0; i = n.indexOf(t, i + t.length)) spans.push([i, i + t.length]);
+  spans.sort((x, y) => x[0] - y[0]);
+  let pos = 0;
+  for (const [a, b] of spans) { if (a < pos) continue; el.append(sn.piece.slice(pos, a), h("mark", {}, sn.piece.slice(a, b))); pos = b; }
+  el.append(sn.piece.slice(pos));
+ }
+ if (sn.tail) el.append(" …");
+ return el;
+}
+
+function baseEntries() {
+ if (savedView) {
+  return saved.filter(s => GAMES[s.appid]).map(s => {
+   const found = (cache[s.appid] || []).find(i => String(i.gid) === s.gid);
+   return {key: s.appid, item: found || {gid: s.gid, title: s.title, date: s.date, url: s.url, contents: "", summary: s.summary, labels: []}};
+  });
+ }
+ if (query.trim()) return visibleKeys().flatMap(k => (cache[k] || []).map(item => ({key: k, item})));
+ return (cache[selected] || []).map(item => ({key: selected, item}));
+}
+function visibleEntries() {
+ const toks = tokens();
+ const list = baseEntries().filter(({item}) =>
+  (!onlyPatch || isPatchItem(item)) &&
+  (!labelFilter.size || (item.labels || []).some(l => labelFilter.has(l))) &&
+  toks.every(t => haystack(item).includes(t)));
+ if (crossGame()) list.sort((a, b) => (b.item.date || 0) - (a.item.date || 0));
+ return list;
+}
+
+function buildCard(entry, list, idx) {
+ const {key, item} = entry, game = GAMES[key];
+ const ik = itemKey(item), tr = showIt[ik] && trCache[ik];
+ const fresh = isNew(key, item), cross = crossGame();
+ const article = h("article", {class: "card" + (fresh ? " is-new" : "")});
+ const meta = h("span", {class: "date"}, dateLabel(item.date) + (versionOf(item.title) ? " · v" + versionOf(item.title) : ""));
+ const top = h("div", {class: "card-top"}, cross ? h("span", {}, h("span", {class: "gname"}, game.name), " · ", meta) : meta,
+  fresh ? h("span", {class: "tag new"}, "NUOVO") : h("span", {class: "tag"}, "STEAM"));
+ const title = h("h3", {}, (tr ? tr.title : item.title) || "Aggiornamento");
+ const full = (tr ? tr.text : fullText(item)) || "Apri la pubblicazione per leggere tutti i dettagli.";
+ const isLong = full.length > PREVIEW_CHARS;
+ const body = h("div", {class: "summary"});
+ renderRich(body, (isLong && !expanded[ik]) ? previewOf(full) : full);
+ article.append(top, title);
+ const lb = labelsEl(item); if (lb) article.append(lb);
+ if (item.summary) article.append(summaryBox(item));
+ const sn = snippetEl(item, tokens()); if (sn) article.append(sn);
+ if (!sn || expanded[ik]) article.append(body);
+ if (item.truncated) article.append(warnEl());
+ const actions = h("div", {class: "actions"});
+ if (isLong && !sn) actions.append(mkBtn(expanded[ik] ? "▴ Riduci" : "▾ Mostra tutto", () => { expanded[ik] = !expanded[ik]; render(); }));
+ actions.append(mkBtn("⛶ Schermo intero", () => openViewer(list, idx)));
+ actions.append(mkBtn(tr ? "↩ Mostra originale" : "🌐 Traduci in italiano", b => toggleTranslate(item, b)));
+ actions.append(mkBtn(isSaved(key, item) ? "★ Salvata" : "☆ Salva", () => toggleSaved(key, item), isSaved(key, item) ? "on" : ""));
+ actions.append(mkBtn("↗ Condividi", () => shareItem(item, game.name)));
+ actions.append(h("a", {class: "more", href: safeUrl(item.url, game.store), target: "_blank", rel: "noopener noreferrer"}, "Apri su Steam ↗"));
+ article.append(actions);
+ return article;
+}
+
+function emptyMessage(total) {
+ if (savedView && !saved.length) return "Nessuna patch salvata: tocca «☆ Salva» su una scheda per ritrovarla qui.";
+ if (query.trim()) return "Nessun risultato per «" + query.trim() + "». Cerco nei titoli, nei testi e nei riassunti dei giochi visibili.";
+ if (total && (onlyPatch || labelFilter.size)) return "Nessuna pubblicazione corrisponde ai filtri attivi: toglili per vederle tutte.";
+ return "Non risultano annunci recenti per questo gioco.";
+}
+
+function renderFilters() {
+ const box = $("filters"), sl = box.scrollLeft; box.innerHTML = "";
+ const chip = (label, on, fn) => { const b = h("button", {type: "button", class: "fchip" + (on ? " on" : ""), "aria-pressed": on ? "true" : "false"}, label); b.addEventListener("click", fn); box.append(b); };
+ chip("🔍 Cerca", searchOpen || !!query, toggleSearch);
+ chip("★ Salvati" + (saved.length ? " · " + saved.length : ""), savedView, () => { savedView = !savedView; showLimit = PAGE; render(); });
+ chip("Solo patch", onlyPatch, () => setOnlyPatch(!onlyPatch));
+ for (const l of Object.keys(LABEL_TXT)) chip(LABEL_TXT[l], labelFilter.has(l), () => { labelFilter.has(l) ? labelFilter.delete(l) : labelFilter.add(l); showLimit = PAGE; render(); });
+ box.scrollLeft = sl;
+ $("searchbar").hidden = !(searchOpen || query);
+}
+function toggleSearch() {
+ if (searchOpen || query) { searchOpen = false; query = ""; $("q").value = ""; }
+ else { searchOpen = true; }
+ showLimit = PAGE; render();
+ if (searchOpen) $("q").focus();
+}
+
+const players = {};       // gioco -> {n}
+const playersTry = {};    // gioco -> ultimo tentativo
+async function ensurePlayers(key) {
+ if (Date.now() - (playersTry[key] || 0) < 10 * 60000) return;
+ playersTry[key] = Date.now();
+ try {
+  const d = await fetchJSON("https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid=" + GAMES[key].appid, x => x && x.response && typeof x.response.player_count === "number", 6000, 2);
+  players[key] = {n: d.response.player_count};
+  if (key === selected && !crossGame()) renderMeta(false);
+ } catch {}
+}
+function renderMeta(fetchPlayers = true) {
+ const el = $("meta"); el.innerHTML = "";
+ if (crossGame() || !GAMES[selected]) return;
+ const g = GAMES[selected], p = g.price;
+ if (p && p.final) {
+  const sale = p.discount > 0;
+  el.append(h("a", {class: "mchip" + (sale ? " sale" : ""), href: g.store, target: "_blank", rel: "noopener noreferrer", title: "Apri la pagina Steam"},
+   sale ? "🏷 −" + p.discount + "% · " + p.final + (p.initial ? " (era " + p.initial + ")" : "") : "💶 " + p.final));
+ }
+ const pl = players[selected];
+ if (pl) el.append(h("span", {class: "mchip", title: "Giocatori connessi su Steam"}, "👥 " + pl.n.toLocaleString("it-IT") + " online"));
+ if (fetchPlayers) ensurePlayers(selected);
+}
+
+/* Avviso se il controllo automatico su GitHub non parte da troppo tempo */
+let lastCheck = 0;
+const STALE_MS = 4 * 3600 * 1000;
+async function loadCheck() {
+ const repo = repoName(); if (!repo || location.protocol === "file:") return;
+ const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), 6000);
+ try {
+  const r = await fetch("https://api.github.com/repos/" + repo + "/actions/workflows/update.yml/runs?status=success&per_page=1", {signal: ctrl.signal, headers: {Accept: "application/vnd.github+json"}});
+  if (!r.ok) return;
+  const run = ((await r.json()).workflow_runs || [])[0];
+  if (run) lastCheck = Date.parse(run.updated_at) || 0;
+ } catch {} finally { clearTimeout(timer); }
+}
+function renderStale() {
+ const el = $("stale"), late = lastCheck && Date.now() - lastCheck > STALE_MS;
+ el.hidden = !late;
+ if (late) el.textContent = "⏱ Il controllo automatico delle novità non parte da " + Math.floor((Date.now() - lastCheck) / 3600000) + " ore: potresti non vedere gli ultimi aggiornamenti. È un ritardo di GitHub e di solito si risolve da solo.";
+}
+
+function render() {
+ const cross = crossGame(), game = GAMES[selected];
+ const all = baseEntries();
+ if (!cross && cache[selected]) viewed[selected] = true;
+ renderNav(); renderBanner(); renderStale(); renderMeta(); renderFilters(); updateTitle();
+ $("gameTitle").textContent = savedView ? "★ Salvati" : query.trim() ? "Ricerca" : game.name;
+ const box = $("cards"); box.innerHTML = "";
+ if (!cross && !cache[selected]) { $("count").textContent = "In attesa dei dati"; return; }
+ const list = visibleEntries(), n = list.length;
+ $("count").textContent = (n !== all.length && !query.trim() ? n + " di " + all.length : n) + (n === 1 ? " pubblicazione" : " pubblicazioni") + (query.trim() ? " con «" + query.trim() + "»" : "");
+ if (!n) { box.append(h("div", {class: "empty"}, emptyMessage(all.length))); return; }
+ list.slice(0, showLimit).forEach((entry, i) => box.append(buildCard(entry, list, i)));
+ if (n > showLimit) box.append(mkBtn("Mostra altre " + Math.min(PAGE, n - showLimit) + " (" + (n - showLimit) + " restanti)", () => { showLimit += PAGE; render(); }, "moreBtn"));
+}
+(() => {
+ let timer;
+ $("q").addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => { query = $("q").value; showLimit = PAGE; render(); }, 180); });
+ $("qClear").addEventListener("click", () => { query = ""; searchOpen = false; $("q").value = ""; showLimit = PAGE; render(); });
+})();
 
 /* ---------- Aggiornamento ---------- */
 async function loadGame(key) {
@@ -848,12 +1131,12 @@ async function refreshAll(manual = false) {
  snapshot = await loadSnapshot();
  if (snapshot && snapshot.games.length) { setGames(applyPending(snapshot.games)); save(); }
  ensureSelected();
- const errors = await Promise.all(visibleKeys().map(loadGame));
+ const [errors] = await Promise.all([Promise.all(visibleKeys().map(loadGame)), loadCheck()]);
  baselineSeen();
  const failedSelected = errors[visibleKeys().indexOf(selected)];
  if (!failedSelected) {
   lastRefresh = Date.now(); save();
-  setStatus("Ultimo controllo: " + new Date().toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"}) + " · fonte: Steam" + (snapshot ? " via GitHub" : ""), "ok");
+  setStatus("Ultimo controllo: " + new Date().toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"}) + " · fonte: Steam" + (snapshot ? " via GitHub" : "") + (lastCheck ? " · controllo automatico alle " + new Date(lastCheck).toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"}) : ""), "ok");
  } else if (cache[selected]) {
   setStatus("Steam non risponde: mostro gli ultimi dati salvati. Premi «Aggiorna» per riprovare. (" + failedSelected.message + ")", "error");
  } else {
@@ -881,23 +1164,22 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("pagehide", flush);
 setInterval(() => { if (!document.hidden) refreshAll(); }, REFRESH_MS);
 
-load();
-loadSeen();
-loadHidden();
-loadPending();
-loadPatchPref();
-loadAdmin();
-loadNotif();
-ensureSelected();
 
 /* ---------- Notifiche push (ntfy, web app) ---------- */
 function setTopicLink() { renderNotif(); if (notifPref.on) syncNotif().catch(() => {}); }
 /* Notifiche push: l'app si iscrive da sola al servizio gratuito ntfy.sh (Web Push), senza installare altre app. */
 const NOTIF_KEY = "game_patch_radar_notif_v1";
 const NTFY = "https://ntfy.sh";
-let notifPref = {on: false, off: []};   // off = giochi a cui NON vuole essere avvisato
+/* off = giochi senza avvisi; mode = «now» (subito) o «digest» (riepilogo serale); news = anche annunci ed eventi; sale = saldi; quiet = ore senza suono */
+let notifPref = {on: false, off: [], mode: "now", news: false, sale: false, quiet: {on: false, from: "23:00", to: "08:00"}};
 let notifMsg = null;
-function loadNotif() { try { const d = JSON.parse(localStorage.getItem(NOTIF_KEY) || "null"); if (d) notifPref = {on: !!d.on, off: d.off || []}; } catch {} }
+function loadNotif() {
+ try {
+  const d = JSON.parse(localStorage.getItem(NOTIF_KEY) || "null"), q = (d && d.quiet) || {};
+  if (d) notifPref = {on: !!d.on, off: d.off || [], mode: d.mode === "digest" ? "digest" : "now", news: !!d.news, sale: !!d.sale,
+   quiet: {on: !!q.on, from: q.from || "23:00", to: q.to || "08:00"}};
+ } catch {}
+}
 function saveNotif() { try { localStorage.setItem(NOTIF_KEY, JSON.stringify(notifPref)); } catch {} }
 function notifSupported() { return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && location.protocol !== "file:"; }
 function b64u(t) { const pad = "=".repeat((4 - t.length % 4) % 4); return Uint8Array.from(atob((t + pad).replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0)); }
@@ -911,22 +1193,39 @@ async function pushSub(create) {
  }
  return sub;
 }
+/* Gli argomenti a cui iscriversi: uno per gioco (patch, oppure riepilogo serale), più annunci e saldi se richiesti. */
+function topicList() {
+ const out = [];
+ for (const k of ORDER) {
+  if (notifPref.off.includes(k)) continue;
+  const id = CFG.ntfyTopic + "-" + GAMES[k].appid;
+  out.push(notifPref.mode === "digest" ? id + "-digest" : id);
+  if (notifPref.news) out.push(id + "-news");
+  if (notifPref.sale) out.push(id + "-sale");
+ }
+ return out;
+}
+/* Le ore silenziose le applica il service worker, che le riceve da qui. */
+async function postPrefs() {
+ try { const reg = await navigator.serviceWorker.ready; if (reg.active) reg.active.postMessage({type: "prefs", quiet: notifPref.quiet}); } catch {}
+}
 /* Allinea il servizio con le scelte fatte (si richiama a ogni apertura per tenere valida l'iscrizione). */
 async function syncNotif() {
  if (!notifSupported()) return;
- const sub = await pushSub(notifPref.on);
- if (!notifPref.on) {
+ if (notifPref.on && !CFG.ntfyTopic) throw new Error("Notifiche non ancora configurate");
+ const topics = notifPref.on ? topicList() : [];
+ const sub = await pushSub(topics.length > 0);
+ if (!topics.length) {
   if (sub) {
    try { await fetch(NTFY + "/v1/webpush", {method: "DELETE", headers: {"Content-Type": "application/json"}, body: JSON.stringify({endpoint: sub.endpoint})}); } catch {}
    try { await sub.unsubscribe(); } catch {}
   }
   return;
  }
- if (!CFG.ntfyTopic) throw new Error("Notifiche non ancora configurate");
  const j = sub.toJSON();
- const topics = ORDER.filter(k => !notifPref.off.includes(k)).map(k => CFG.ntfyTopic + "-" + GAMES[k].appid);
  const r = await fetch(NTFY + "/v1/webpush", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({endpoint: j.endpoint, auth: j.keys.auth, p256dh: j.keys.p256dh, topics})});
  if (!r.ok) throw new Error("Il servizio notifiche ha risposto " + r.status);
+ await postPrefs();
 }
 async function setMaster(on) {
  notifMsg = null;
@@ -940,12 +1239,13 @@ async function setMaster(on) {
  catch (e) { notifPref.on = !on; saveNotif(); notifMsg = ["err", "Non sono riuscito a " + (on ? "attivarle" : "disattivarle") + ": " + e.message]; }
  renderNotif();
 }
-async function setGameNotif(k, on) {
- notifPref.off = on ? notifPref.off.filter(x => x !== k) : [...new Set([...notifPref.off, k])];
- saveNotif(); notifMsg = null;
- try { await syncNotif(); } catch (e) { notifMsg = ["err", "Salvataggio non riuscito: " + e.message]; }
+async function setPref(patch, resync = true) {
+ Object.assign(notifPref, patch); saveNotif(); notifMsg = null;
+ if (resync) { try { await syncNotif(); } catch (e) { notifMsg = ["err", "Salvataggio non riuscito: " + e.message]; } }
+ else await postPrefs();
  renderNotif();
 }
+function setGameNotif(k, on) { return setPref({off: on ? notifPref.off.filter(x => x !== k) : [...new Set([...notifPref.off, k])]}); }
 function switchEl(checked, onchange, disabled) {
  const i = h("input", {type: "checkbox"}); i.checked = checked; i.disabled = !!disabled; i.addEventListener("change", () => onchange(i.checked));
  return h("label", {class: "sw"}, i, h("i", {}));
@@ -959,9 +1259,21 @@ function renderNotif() {
  const denied = Notification.permission === "denied";
  box.append(h("div", {class: "nrow big"}, h("span", {}, "Ricevi le notifiche sui nuovi aggiornamenti"), switchEl(notifPref.on && !denied, setMaster, false)));
  if (denied) box.append(h("p", {class: "nstat errmsg"}, "Le notifiche sono bloccate per questo sito: consentile dalle impostazioni del browser."));
- else if (notifPref.on) box.append(h("p", {class: "nstat okmsg"}, "✓ Attive su questo dispositivo. Scegli i giochi:"));
- else box.append(h("p", {class: "v-note"}, "Attiva l'interruttore per essere avvisato anche quando l'app è chiusa."));
- if (notifPref.on && !denied) {
+ else if (!notifPref.on) box.append(h("p", {class: "v-note"}, "Attiva l'interruttore per essere avvisato anche quando l'app è chiusa."));
+ else {
+  box.append(h("p", {class: "nstat okmsg"}, "✓ Attive su questo dispositivo."));
+  const seg = h("div", {class: "seg"});
+  for (const [m, label] of [["now", "Subito"], ["digest", "Riepilogo serale"]]) seg.append(h("button", {type: "button", class: "abtn" + (notifPref.mode === m ? " on" : ""), onclick: () => notifPref.mode !== m && setPref({mode: m})}, label));
+  box.append(seg, h("p", {class: "v-note"}, notifPref.mode === "digest" ? "Una sola notifica per gioco, verso le 18:00, con le patch uscite nella giornata." : "Una notifica appena esce una nuova patch."));
+  box.append(h("div", {class: "nrow"}, h("span", {}, "Includi anche annunci ed eventi"), switchEl(notifPref.news, on => setPref({news: on}))));
+  box.append(h("div", {class: "nrow"}, h("span", {}, "Avvisami quando un gioco va in saldo"), switchEl(notifPref.sale, on => setPref({sale: on}))));
+  const q = notifPref.quiet;
+  box.append(h("div", {class: "nrow"}, h("span", {}, "Ore silenziose (senza suono né vibrazione)"), switchEl(q.on, on => setPref({quiet: {...q, on}}, false))));
+  if (q.on) {
+   const time = (val, key) => { const i = h("input", {type: "time", class: "tin", value: val}); i.addEventListener("change", () => i.value && setPref({quiet: {...notifPref.quiet, [key]: i.value}}, false)); return i; };
+   box.append(h("div", {class: "nrow", style: "gap:8px"}, h("span", {style: "flex:0 0 auto"}, "Dalle"), time(q.from, "from"), h("span", {style: "flex:0 0 auto"}, "alle"), time(q.to, "to")));
+  }
+  box.append(h("p", {class: "v-note", style: "margin-top:12px"}, "Giochi da seguire:"));
   for (const k of ORDER) box.append(h("div", {class: "nrow"}, h("span", {}, GAMES[k].name), switchEl(!notifPref.off.includes(k), on => setGameNotif(k, on))));
   box.append(h("div", {class: "row-btns"}, h("button", {type: "button", class: "abtn", onclick: async () => {
    try { const reg = await navigator.serviceWorker.ready; await reg.showNotification("Game Patch Radar", {body: "Le notifiche funzionano ✓", icon: "icons/icon-192.png", badge: "icons/icon-192.png"}); } catch (e) { toast("Prova non riuscita"); }
@@ -970,6 +1282,117 @@ function renderNotif() {
  if (notifMsg) box.append(h("p", {class: "nstat " + (notifMsg[0] === "err" ? "errmsg" : "okmsg")}, notifMsg[1]));
 }
 $("ntfyLink").addEventListener("click", e => { e.preventDefault(); openManager(); $("nSection").scrollIntoView({block: "start"}); });
+
+/* ---------- Dimensione del testo ---------- */
+const FONT_KEY = "game_patch_radar_font_v1", FONTS = [0.9, 1, 1.15, 1.3];
+let fontIdx = 1;
+function applyFont() { document.documentElement.style.setProperty("--tz", FONTS[fontIdx]); }
+function loadFont() { try { const i = FONTS.indexOf(Number(localStorage.getItem(FONT_KEY))); if (i >= 0) fontIdx = i; } catch {} applyFont(); }
+function setFont(i) {
+ fontIdx = Math.max(0, Math.min(FONTS.length - 1, i));
+ try { localStorage.setItem(FONT_KEY, String(FONTS[fontIdx])); } catch {}
+ applyFont(); renderFont();
+}
+function renderFont() {
+ const row = $("fontRow"); row.innerHTML = "";
+ row.append(h("button", {type: "button", class: "abtn", "aria-label": "Testo più piccolo", ...(fontIdx === 0 ? {disabled: ""} : {}), onclick: () => setFont(fontIdx - 1)}, "A−"),
+  h("button", {type: "button", class: "abtn", "aria-label": "Testo più grande", ...(fontIdx === FONTS.length - 1 ? {disabled: ""} : {}), onclick: () => setFont(fontIdx + 1)}, "A+"),
+  h("span", {class: "v-note", style: "align-self:center;margin:0"}, "Testo: " + Math.round(FONTS[fontIdx] * 100) + "%"));
+}
+
+/* ---------- Riepilogo dall'ultima visita ---------- */
+function openRecap() {
+ const body = $("recapBody"); body.innerHTML = "";
+ const entries = [];
+ for (const k of visibleKeys()) for (const it of newItems(k)) entries.push({key: k, item: it});
+ if (!entries.length) return;
+ const when = prevVisit ? new Intl.DateTimeFormat("it-IT", {day: "numeric", month: "long", hour: "2-digit", minute: "2-digit"}).format(new Date(prevVisit)) : "";
+ body.append(h("h2", {}, "Novità" + (when ? " dal " + when : "")), h("p", {class: "v-note"}, plural(entries.length) + ". Tocca «Leggi» per aprire la nota completa; da lì puoi scorrere le altre."));
+ let last = null;
+ entries.forEach((entry, i) => {
+  const {key, item} = entry;
+  if (key !== last) { last = key; body.append(h("div", {class: "rgame"}, coverImg(GAMES[key].appid, "cover", GAMES[key].image), h("b", {}, GAMES[key].name))); }
+  const text = item.summary || (fullText(item).replace(/\s+/g, " ").slice(0, 220) + (fullText(item).length > 220 ? "…" : ""));
+  const card = h("div", {class: "rcard"}, h("span", {class: "date"}, dateLabel(item.date)), h("h3", {}, (item.it && item.it.title) || item.title || "Aggiornamento"));
+  const lb = labelsEl(item); if (lb) card.append(lb);
+  if (text) card.append(h("div", {class: "rs"}, text));
+  card.append(h("div", {class: "actions"}, mkBtn("⛶ Leggi", () => openViewer(entries, i))));
+  body.append(card);
+ });
+ body.append(h("div", {class: "actions", style: "margin-top:16px"}, mkBtn("✓ Segna tutto come letto", () => { markAllRead(); closeOv("recap"); })));
+ openOv("recap");
+}
+$("rClose").addEventListener("click", () => closeOv("recap"));
+
+/* ---------- Benvenuto (prima apertura) ---------- */
+const WELCOME_KEY = "game_patch_radar_welcome_v1";
+const isStandalone = () => { try { return matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; } catch { return false; } };
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function renderWelcome() {
+ const box = $("welcomeBody"); box.innerHTML = "";
+ const installed = isStandalone();
+ const notifOn = notifSupported() && notifPref.on && Notification.permission === "granted";
+ const step = (n, done, title, ...kids) => h("div", {class: "step" + (done ? " done" : "")}, h("div", {class: "n"}, done ? "✓" : String(n)), h("div", {}, h("h4", {}, title), ...kids));
+ box.append(h("h2", {}, "Benvenuto in Game Patch Radar"), h("p", {class: "v-note"}, "Le patch dei tuoi giochi Steam, riassunte e tradotte in italiano. Tre passi e sei pronto."));
+ const s1 = [];
+ if (installed) s1.push(h("p", {}, "L'app è già installata."));
+ else if (installEvt) s1.push(h("p", {}, "Così la trovi nel Launcher come una vera app."), mkBtn("📲 Installa", installApp));
+ else if (isIOS()) s1.push(h("p", {}, "Tocca Condividi nel browser (il quadrato con la freccia) e scegli «Aggiungi alla schermata Home»."));
+ else s1.push(h("p", {}, "Dal menu del browser (⋮) scegli «Installa app» oppure «Aggiungi a schermata Home»."));
+ box.append(step(1, installed, "Aggiungi l'app alla schermata Home", ...s1));
+ const s2 = [];
+ if (!notifSupported()) s2.push(h("p", {}, isIOS() && !installed ? "Su iPhone le notifiche funzionano dopo aver aggiunto l'app alla schermata Home: fallo, poi riaprila da lì." : "Questo browser non supporta le notifiche."));
+ else if (notifOn) s2.push(h("p", {}, "Attive: ti avviso quando esce una patch. I dettagli sono nelle impostazioni."));
+ else s2.push(h("p", {}, "Ti avviso quando esce una nuova patch, anche ad app chiusa."), mkBtn("🔔 Attiva le notifiche", async () => { await setMaster(true); renderWelcome(); }));
+ box.append(step(2, notifOn, "Attiva le notifiche", ...s2));
+ box.append(step(3, false, "Scegli i tuoi giochi", h("p", {}, "Nascondi quelli che non ti interessano e regola notifiche, tema e dimensione del testo."), mkBtn("⚙ Apri le impostazioni", () => { finishWelcome(); openManager(); })));
+ box.append(h("div", {class: "actions", style: "margin-top:18px"}, mkBtn("Inizia ▸", finishWelcome)));
+}
+function showWelcome() { renderWelcome(); openOv("welcome"); }
+function finishWelcome() { try { localStorage.setItem(WELCOME_KEY, "1"); } catch {} closeOv("welcome"); }
+function maybeWelcome(returning) {
+ try {
+  if (localStorage.getItem(WELCOME_KEY)) return;
+  if (returning) { localStorage.setItem(WELCOME_KEY, "1"); return; }
+ } catch { return; }
+ showWelcome();
+}
+
+/* ---------- Invita un amico ---------- */
+function inviteUrl() { return location.origin + location.pathname.replace(/[^/]*$/, ""); }
+let qrPromise = null;
+function loadQr() {
+ if (!qrPromise) qrPromise = new Promise((res, rej) => {
+  if (window.qrcode) return res();
+  const s = document.createElement("script"); s.src = "qr.js"; s.onload = res; s.onerror = () => { qrPromise = null; rej(new Error("qr")); };
+  document.head.append(s);
+ });
+ return qrPromise;
+}
+function qrSvg(text) {
+ const q = qrcode(0, "M"); q.addData(text); q.make();
+ const n = q.getModuleCount(), m = 2, sz = n + 2 * m; let d = "";
+ for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += "M" + (c + m) + " " + (r + m) + "h1v1h-1z";
+ return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + sz + " " + sz + '" role="img" aria-label="Codice QR con il link all\'app" shape-rendering="crispEdges"><rect width="' + sz + '" height="' + sz + '" fill="#fff"/><path d="' + d + '" fill="#000"/></svg>';
+}
+function openInvite() {
+ const box = $("inviteBody"); box.innerHTML = "";
+ box.append(h("h2", {}, "Invita un amico"));
+ if (location.protocol === "file:") { box.append(h("p", {class: "v-note"}, "Per invitare gli amici apri l'app dal suo indirizzo web, non da un file.")); openOv("invite"); return; }
+ const url = inviteUrl();
+ const holder = h("div", {class: "qr"});
+ box.append(h("p", {class: "v-note"}, "Fai inquadrare il codice o manda il link. Aprendolo dal telefono, il browser propone di installare l'app."), h("div", {style: "margin:14px 0"}, holder), h("p", {style: "overflow-wrap:anywhere;font-size:13px"}, url));
+ loadQr().then(() => { holder.innerHTML = qrSvg(url); }).catch(() => holder.replaceWith(h("p", {class: "v-note"}, "Codice QR non disponibile ora: usa il link.")));
+ const btns = h("div", {class: "row-btns", style: "justify-content:center"});
+ if (navigator.share) btns.append(mkBtn("↗ Condividi", async () => { try { await navigator.share({title: "Game Patch Radar", text: "Le patch dei tuoi giochi Steam, in italiano:", url}); } catch {} }));
+ btns.append(mkBtn("🔗 Copia link", async () => { try { await navigator.clipboard.writeText(url); toast("🔗 Link copiato"); } catch { toast("Copia non riuscita"); } }),
+  h("a", {class: "abtn", style: "text-decoration:none", href: "https://wa.me/?text=" + encodeURIComponent("Guarda Game Patch Radar, le patch dei giochi Steam in italiano: " + url), target: "_blank", rel: "noopener noreferrer"}, "💬 WhatsApp"));
+ box.append(btns);
+ openOv("invite");
+}
+$("inviteBtn").addEventListener("click", openInvite);
+$("guideBtn").addEventListener("click", showWelcome);
+$("iClose").addEventListener("click", () => closeOv("invite"));
 
 /* ---------- Tema ---------- */
 const THEME_KEY = "game_patch_radar_theme_v1";
@@ -1005,7 +1428,7 @@ applyTheme(currentTheme());
 /* ---------- Trascina per aggiornare ---------- */
 (() => {
  let y0 = null, dy = 0; const bar = $("ptr");
- const free = () => !viewerItem && !$("manager").classList.contains("open") && window.scrollY <= 0;
+ const free = () => !anyOverlay() && window.scrollY <= 0;
  document.addEventListener("touchstart", e => { y0 = free() ? e.touches[0].clientY : null; dy = 0; }, {passive: true});
  document.addEventListener("touchmove", e => {
   if (y0 === null) return;
@@ -1022,28 +1445,39 @@ applyTheme(currentTheme());
 fetch("config.json", {cache: "no-store"}).then(r => r.ok ? r.json() : null).then(c => {
  if (c) { CFG = c; setTopicLink(); }
 }).catch(() => {});
-$("onlyPatch").addEventListener("change", e => {
- onlyPatch = e.target.checked; $("patchTgl").classList.toggle("on", onlyPatch);
- try { localStorage.setItem(PATCH_KEY, onlyPatch ? "1" : "0"); } catch {}
- render();
-});
 
 /* ---------- Installazione come app (PWA) ---------- */
 let installEvt = null;
-window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; $("installBtn").hidden = false; });
-$("installBtn").addEventListener("click", async () => {
+const welcomeOpen = () => $("welcome").classList.contains("open");
+async function installApp() {
  if (!installEvt) return;
  installEvt.prompt();
  try { await installEvt.userChoice; } catch {}
  installEvt = null; $("installBtn").hidden = true;
-});
-window.addEventListener("appinstalled", () => { $("installBtn").hidden = true; toast("✓ App installata: la trovi nel Launcher"); });
+ if (welcomeOpen()) renderWelcome();
+}
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; $("installBtn").hidden = false; if (welcomeOpen()) renderWelcome(); });
+$("installBtn").addEventListener("click", installApp);
+window.addEventListener("appinstalled", () => { $("installBtn").hidden = true; toast("✓ App installata: la trovi nel Launcher"); if (welcomeOpen()) renderWelcome(); });
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 }
+/* ---------- Avvio (dopo che tutto è definito) ---------- */
+const returning = (() => { try { return !!(localStorage.getItem(SEEN_KEY) || localStorage.getItem(STORE_KEY)); } catch { return true; } })();
+load();
+loadSeen();
+loadSaved();
+loadFont();
+loadHidden();
+loadPending();
+loadPatchPref();
+loadAdmin();
+loadNotif();
+ensureSelected();
 if (cache[selected]) setStatus("Dati salvati · aggiornamento in corso…");
 render();
 refreshAll();
+maybeWelcome(returning);
 </script>
 </body>
 </html>

@@ -53,7 +53,7 @@ jobs:
         if: steps.fetch.outputs.changed == 'true' || github.event_name != 'schedule'
         run: |
           mkdir _site
-          cp -r index.html manifest.webmanifest sw.js config.json icons data _site/
+          cp -r index.html manifest.webmanifest sw.js qr.js config.json icons data _site/
 
       - uses: actions/configure-pages@v5
         if: steps.fetch.outputs.changed == 'true' || github.event_name != 'schedule'

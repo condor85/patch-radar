@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Scarica gli annunci Steam dei giochi, li salva in data/news.json e (opzionale) invia notifiche ntfy."""
-import json, os, re, sys, time, urllib.error, urllib.parse, urllib.request
+import datetime, json, os, re, sys, time, urllib.error, urllib.parse, urllib.request
+from zoneinfo import ZoneInfo
 
 API = os.environ.get("STEAM_API_BASE", "https://api.steampowered.com")
 STORE = os.environ.get("STEAM_STORE_BASE", "https://store.steampowered.com")
@@ -50,6 +51,9 @@ def gemini_models():
 MAX_SUMMARIES = int(os.environ.get("MAX_SUMMARIES", "8"))
 TRANSLATE_BUDGET = int(os.environ.get("TRANSLATE_BUDGET", "3"))
 ELLIPSIS = re.compile(r"(\.\.\.|…)\s*$")
+HISTORY_MAX = int(os.environ.get("HISTORY_MAX", "60"))   # annunci conservati per gioco (Steam ne restituisce solo 20)
+DIGEST_HOUR = int(os.environ.get("DIGEST_HOUR", "18"))   # ora italiana del riepilogo serale
+TZ = ZoneInfo("Europe/Rome")
 
 
 def http(url, data=None, headers=None, retries=3):
@@ -114,13 +118,17 @@ def load_games():
     return out
 
 
-def resolve_info(appid):
-    """Nome e immagine di copertina ufficiale dal negozio Steam."""
-    try:
-        d = get_json(f"{STORE}/api/appdetails?appids={appid}&filters=basic&l=english")["%s" % appid]["data"]
-        return d.get("name", ""), d.get("header_image", "")
-    except Exception:  # noqa
-        return "", ""
+def store_details(appid):
+    """Nome, copertina ufficiale e prezzo dal negozio Steam (prezzi in euro). Alza un'eccezione se non disponibile."""
+    d = get_json(f"{STORE}/api/appdetails?appids={appid}&filters=basic,price_overview&cc=it&l=english")[str(appid)]
+    if not d.get("success"):
+        raise RuntimeError("scheda non disponibile")
+    data = d["data"]
+    po = data.get("price_overview")
+    price = None
+    if po:
+        price = {"final": po.get("final_formatted") or "", "initial": po.get("initial_formatted") or "", "discount": int(po.get("discount_percent") or 0)}
+    return {"name": data.get("name", ""), "image": data.get("header_image", ""), "price": price}
 
 
 def fetch_ntfy_key():
@@ -240,6 +248,58 @@ def extractive_summary(item):
     return out[:900]
 
 
+STRONG_TITLE = re.compile(r"patch|hotfix|hot fix|changelog|change log|release notes|\bfix(es)?\b|\bbuild \d+|aggiornamento", re.I)
+NEWS_TITLE = re.compile(r"\bsale\b|saldi|giveaway|livestream|\bstream\b|festival|discount|soundtrack|merch|wallpaper|contest|competition|spotlight|\bevent\b|meetup|trailer|roadmap|interview", re.I)
+VERSION_TITLE = re.compile(r"\bv?\d+\.\d+")
+
+
+def is_patch(item):
+    """True se la pubblicazione contiene note di aggiornamento vere (non eventi, saldi, annunci)."""
+    if "patchnotes" in (item.get("tags") or []):
+        return True
+    title = item.get("title") or ""
+    if STRONG_TITLE.search(title):
+        return True
+    if NEWS_TITLE.search(title):
+        return False
+    if VERSION_TITLE.search(title):
+        return True
+    body = " ".join(structured_lines(item.get("contents")))[:3000].lower()
+    if re.search(r"\bupdate\b", title, re.I):
+        return bool(re.search(r"patch notes|changelog|bug ?fix|\bfixed\b", body))
+    return bool(re.search(r"patch notes|changelog|bug ?fix", body))
+
+
+LABEL_RULES = [  # (sigla, espressione, occorrenze minime)
+    ("new", re.compile(r"\bnew (?:\w+ ){0,2}(?:weapons?|items?|armou?rs?|biomes?|bosse?s?|enem(?:y|ies)|creatures?|recipes?|quests?|areas?|maps?|modes?|features?|content|regions?|skills?|spells?|class(?:es)?|buildings?|pets?|mounts?|dungeons?|npcs?|locations?|abilit(?:y|ies)|cosmetics?|outfits?|decorations?|furniture)\b|\bnow (?:available|live|playable)\b|\bintroduc\w+|\bseason \d|\bexpansion\b|\bdlc\b", re.I), 2),
+    ("balance", re.compile(r"\bbalanc\w+|\bnerf(?:ed)?\b|\bbuff(?:ed)?\b|\b(?:damage|health|cooldown|drop rate|spawn rate|cost|speed|range|duration)\b[^.\n]{0,40}\b(?:increased|reduced|decreased|lowered|raised|adjusted|changed)\b|\b(?:increased|reduced|decreased|lowered|raised|adjusted)\b[^.\n]{0,40}\b(?:damage|health|cooldown|drop rate|spawn rate|cost|speed|range|duration)\b", re.I), 2),
+    ("perf", re.compile(r"\bperformance\b|\boptimi[sz]\w*|\bfps\b|\bframe ?rate\b|\bstutter\w*|\bmemory (?:usage|leak)|\bloading times?\b|\blag\b", re.I), 2),
+    ("bug", re.compile(r"\bfix(?:ed|es)?\b|\bbug\b|\bresolved\b|\bcrash(?:es|ed)?\b", re.I), 3),
+]
+
+
+def labels_of(item):
+    """Etichette automatiche di una patch: new, balance, perf, bug (in questo ordine)."""
+    text = " ".join(structured_lines(item.get("contents")))
+    out = [name for name, rx, need in LABEL_RULES if len(rx.findall(text)) >= need]
+    if re.search(r"hotfix|hot fix", item.get("title") or "", re.I) and "bug" not in out:
+        out.append("bug")
+    return out
+
+
+def classify(items):
+    for it in items:
+        it["patch"] = is_patch(it)
+        it["labels"] = labels_of(it) if it["patch"] else []
+
+
+def merge_history(items, old_items):
+    """Aggiunge agli annunci appena scaricati quelli vecchi che Steam non restituisce più."""
+    have = {str(i.get("gid")) for i in items}
+    kept = [i for i in old_items if str(i.get("gid")) not in have]
+    return sorted(items + kept, key=lambda x: x.get("date") or 0, reverse=True)[:HISTORY_MAX]
+
+
 def add_summaries(games, old):
     """Riporta i riassunti già fatti e ne crea di nuovi (Gemini se c'è la chiave, altrimenti metodo semplice)."""
     budget, use_ai = MAX_SUMMARIES, bool(GEMINI_KEY)
@@ -308,15 +368,12 @@ def add_translations(games):
                 it["it"] = tr
 
 
-def notify(name, item, appid=None):
+def ntfy_send(topics, title, message, tags, click=""):
     if not NTFY_TOPIC:
         return
-    payload = {"title": f"{name}: nuovo aggiornamento",
-               "message": (item.get("title") or "Nuova pubblicazione su Steam") + ("\n" + item["summary"][:300] if item.get("summary") else ""), "tags": ["video_game"]}
-    if SITE_URL:
-        payload["click"] = SITE_URL
-    # un canale per tutti i giochi e uno per ogni gioco: ognuno si iscrive a quello che preferisce
-    topics = [NTFY_TOPIC] + ([f"{NTFY_TOPIC}-{appid}"] if appid else [])
+    payload = {"title": title, "message": message, "tags": tags}
+    if click or SITE_URL:
+        payload["click"] = click or SITE_URL
     for topic in topics:
         try:
             http(NTFY_URL, data=json.dumps({**payload, "topic": topic}).encode("utf-8"), headers={"Content-Type": "application/json"}, retries=2)
@@ -324,29 +381,62 @@ def notify(name, item, appid=None):
             print(f"  notifica non inviata ({topic}): {e}", file=sys.stderr)
 
 
+def notify(name, item, appid):
+    """Nuova pubblicazione. Le patch vere vanno al canale del gioco; eventi e annunci a un canale a parte."""
+    body = (item.get("title") or "Nuova pubblicazione su Steam") + ("\n" + item["summary"][:300] if item.get("summary") else "")
+    if item.get("patch"):
+        # un canale per tutti i giochi (compatibilità) e uno per ogni gioco
+        ntfy_send([NTFY_TOPIC, f"{NTFY_TOPIC}-{appid}"], f"{name}: nuovo aggiornamento", body, ["video_game"])
+    else:
+        ntfy_send([f"{NTFY_TOPIC}-{appid}-news"], f"{name}: novità", body, ["loudspeaker"])
+
+
+def notify_sale(name, appid, price):
+    line = f"-{price['discount']}%: {price['final']}" + (f" (invece di {price['initial']})" if price.get("initial") else "")
+    ntfy_send([f"{NTFY_TOPIC}-{appid}-sale"], f"{name} è in sconto", line, ["moneybag"], f"https://store.steampowered.com/app/{appid}/")
+
+
+def send_digest(games, since):
+    """Riepilogo serale: una notifica per gioco con le patch uscite dall'ultimo riepilogo."""
+    for g in games:
+        fresh = [i for i in g["items"] if i.get("patch") and (i.get("date") or 0) > since]
+        if not fresh:
+            continue
+        n = len(fresh)
+        title = f"{g['name']}: {n} aggiornament{'o' if n == 1 else 'i'} oggi"
+        ntfy_send([f"{NTFY_TOPIC}-{g['appid']}-digest"], title, "\n".join("• " + (i.get("title") or "Aggiornamento") for i in fresh[:6]), ["newspaper"])
+        print(f"RIEPILOGO {g['name']}: {n}")
+
+
 def main():
     try:
         prev = json.load(open(OUT, encoding="utf-8"))
     except Exception:
         prev = {}
+    now = int(time.time())
     pg = prev.get("games")
     old = {str(g["appid"]): g for g in pg if isinstance(g, dict)} if isinstance(pg, list) else {}
     games, ok = [], 0
     for g in load_games():
         key = str(g["appid"])
-        image = old.get(key, {}).get("image") or ""
-        name = g["name"] or old.get(key, {}).get("name") or ""
-        if not image or not name:
-            n2, i2 = resolve_info(g["appid"])
-            name, image = name or n2 or f"Gioco {g['appid']}", image or i2
+        o = old.get(key, {})
+        name = g["name"] or o.get("name") or ""
+        image, price = o.get("image") or "", o.get("price")
+        try:  # prezzo (può cambiare con i saldi) e, se mancano, nome e copertina
+            det = store_details(g["appid"])
+            name, image, price = name or det["name"] or f"Gioco {g['appid']}", image or det["image"], det["price"]
+        except Exception as e:  # noqa
+            print(f"  scheda negozio non letta per {g['appid']}: {str(e)[:120]}", file=sys.stderr)
+            name = name or f"Gioco {g['appid']}"
         try:
-            items = fetch_game(g["appid"])
+            items = merge_history(fetch_game(g["appid"]), o.get("items", []))
             ok += 1
             print(f"{name}: {len(items)} annunci")
         except Exception as e:  # noqa
             print(f"{name}: ERRORE {e} (tengo i dati precedenti)", file=sys.stderr)
-            items = old.get(key, {}).get("items", [])
-        games.append({"appid": g["appid"], "name": name, "image": image, "items": items})
+            items = o.get("items", [])
+        classify(items)
+        games.append({"appid": g["appid"], "name": name, "image": image, "price": price, "items": items})
     add_summaries(games, old)
     for g in games:
         o = old.get(str(g["appid"]))
@@ -355,18 +445,29 @@ def main():
         known = {str(i["gid"]) for i in o["items"]}
         fresh = [i for i in g["items"] if str(i["gid"]) not in known]
         for it in fresh[:5]:
-            print(f"NUOVO {g['name']}: {it.get('title')}")
+            print(f"NUOVO {g['name']}: {it.get('title')} ({'patch' if it.get('patch') else 'annuncio'})")
             notify(g["name"], it, g["appid"])
+        pr, po = g.get("price"), o.get("price") if "price" in o else False
+        if po is not False and pr and pr["discount"] >= 10 and pr["discount"] > ((po or {}).get("discount") or 0):
+            print(f"SALDO {g['name']}: -{pr['discount']}%")
+            notify_sale(g["name"], g["appid"], pr)
+    # riepilogo serale (una volta al giorno, dopo l'ora stabilita)
+    digest_ts = prev.get("digest_ts") or now
+    local = datetime.datetime.fromtimestamp(now, TZ)
+    if local.hour >= DIGEST_HOUR and datetime.datetime.fromtimestamp(digest_ts, TZ).date() < local.date():
+        send_digest(games, digest_ts)
+        digest_ts = now
     add_translations(games)
     ntfy_key = fetch_ntfy_key() or prev.get("ntfy_key", "")
-    changed = games != (pg if isinstance(pg, list) else None) or ntfy_key != prev.get("ntfy_key", "")
+    changed = (games != (pg if isinstance(pg, list) else None) or ntfy_key != prev.get("ntfy_key", "")
+               or digest_ts != prev.get("digest_ts"))
     if ok == 0:
         print("Nessun gioco aggiornato.", file=sys.stderr)
         changed = False
     if changed:
         os.makedirs("data", exist_ok=True)
         with open(OUT, "w", encoding="utf-8") as f:
-            json.dump({"updated": int(time.time()), "ntfy_key": ntfy_key, "games": games}, f, ensure_ascii=False, separators=(",", ":"))
+            json.dump({"updated": now, "ntfy_key": ntfy_key, "digest_ts": digest_ts, "games": games}, f, ensure_ascii=False, separators=(",", ":"))
     out = os.environ.get("GITHUB_OUTPUT")
     if out:
         with open(out, "a") as f:
