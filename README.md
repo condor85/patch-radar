@@ -21,3 +21,17 @@ Dopo il salvataggio il sito si aggiorna da solo in circa un minuto.
 - Testo regolabile (A−/A+).
 
 Gli argomenti ntfy sono `<argomento>-<appid>` (patch), `-news`, `-sale`, `-digest`.
+
+## Sicurezza
+
+- **L'argomento ntfy non è un segreto**: sta in `config.json`, che in un repository pubblico lo rende leggibile a tutti. Chi lo conosce può inviare notifiche false. Per questo il service worker apre dalle notifiche solo link dell'app e di `store.steampowered.com` / `steamcommunity.com`, e ignora qualunque altro indirizzo.
+- **Token di amministrazione**: è salvato nel browser. Usa un token *fine-grained* limitato a questo repository (Contents: lettura e scrittura) con scadenza (90 giorni); alla scadenza l'app lo scarta e ne chiede uno nuovo.
+- **Content-Security-Policy**: `index.html` limita i domini con cui la pagina può comunicare. Se aggiungi un servizio esterno al codice, aggiungilo anche a `connect-src` (o `img-src`).
+- Il nome dell'argomento è letto da `config.json`; il secret `NTFY_TOPIC` vale solo come ripiego.
+
+## Test
+
+```
+python3 -m unittest discover -s tests -v   # script di aggiornamento (fetch_news.py)
+node tests/sw.test.js                      # service worker (cache, notifiche)
+```

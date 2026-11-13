@@ -6,13 +6,17 @@ from zoneinfo import ZoneInfo
 API = os.environ.get("STEAM_API_BASE", "https://api.steampowered.com")
 STORE = os.environ.get("STEAM_STORE_BASE", "https://store.steampowered.com")
 def _topic():
-    t = os.environ.get("NTFY_TOPIC", "").strip()
-    if t:
-        return t
+    """Argomento ntfy. La fonte di verità è config.json: è quello che legge l'app e che «Cambia argomento» aggiorna.
+    Il secret NTFY_TOPIC vale solo come ripiego; se avesse la precedenza, dopo il cambio le notifiche partirebbero
+    su un argomento a cui nessuno è più iscritto."""
     try:
-        return json.load(open("config.json", encoding="utf-8")).get("ntfyTopic", "").strip()
-    except Exception:
-        return ""
+        with open("config.json", encoding="utf-8") as f:
+            t = str(json.load(f).get("ntfyTopic", "")).strip()
+        if t:
+            return t
+    except Exception:  # noqa
+        pass
+    return os.environ.get("NTFY_TOPIC", "").strip()
 
 
 NTFY_TOPIC = _topic()
@@ -65,7 +69,8 @@ def http(url, data=None, headers=None, retries=3):
                 return r.read()
         except Exception as e:  # noqa
             last = e
-            time.sleep(2 * (i + 1))
+            if i < retries - 1:  # dopo l'ultimo tentativo è inutile aspettare
+                time.sleep(2 * (i + 1))
     raise last
 
 
@@ -103,9 +108,15 @@ def fetch_game(appid):
 
 def load_games():
     """Legge games.json: [{"appid": 123, "name": "Facoltativo"}, ...]"""
-    data = json.load(open("games.json", encoding="utf-8"))
+    with open("games.json", encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict) or not isinstance(data.get("games", []), list):
+        raise ValueError('il file deve essere del tipo {"games": [{"appid": 123}, ...]}')
     out, seen = [], set()
     for g in data.get("games", []):
+        if not isinstance(g, dict):
+            print(f"voce ignorata in games.json: {g}", file=sys.stderr)
+            continue
         try:
             appid = int(g["appid"])
         except Exception:  # noqa
@@ -311,6 +322,8 @@ def add_summaries(games, old):
                 it["summary"], it["summary_src"] = p["summary"], p.get("summary_src", "simple")
             if p and p.get("it"):
                 it["it"] = p["it"]
+            if p and p.get("it_fail"):
+                it["it_fail"] = p["it_fail"]
     for g in games:
         for it in g["items"][:6]:
             if budget <= 0:
@@ -320,8 +333,10 @@ def add_summaries(games, old):
             text, src = "", "simple"
             if use_ai:
                 try:
-                    text, src = summarize(g["name"], it), "ai"
-                    time.sleep(7)  # il piano gratuito consente circa 10 richieste al minuto
+                    text = summarize(g["name"], it)
+                    if text:  # summarize() torna "" senza chiamare Gemini se il testo è troppo corto: niente pausa inutile
+                        src = "ai"
+                        time.sleep(7)  # il piano gratuito consente circa 10 richieste al minuto
                 except RateLimited as e:
                     print(f"  limite di richieste Gemini raggiunto, riprovo alla prossima esecuzione ({str(e)[:300]})", file=sys.stderr)
                     use_ai = False
@@ -342,6 +357,15 @@ def add_summaries(games, old):
 PATCH_RE = re.compile(r"patch|hotfix|hot fix|update|changelog|release notes|\bfix(es)?\b|\bv?\d+\.\d+|\bbuild \d+", re.I)
 
 
+TRANSLATE_RETRIES = 3        # tentativi falliti prima di fermarsi...
+TRANSLATE_RETRY_AFTER = 86400  # ...e di riprovare dopo un giorno
+
+
+def translation_gave_up(it, now=None):
+    f = it.get("it_fail") or {}
+    return f.get("n", 0) >= TRANSLATE_RETRIES and (now or time.time()) - f.get("ts", 0) < TRANSLATE_RETRY_AFTER
+
+
 def add_translations(games):
     """Traduce per intero in italiano (Gemini) le patch più recenti, poche per volta."""
     if not GEMINI_KEY:
@@ -351,21 +375,28 @@ def add_translations(games):
         for it in g["items"][:3]:
             if budget <= 0:
                 return
-            if it.get("it") or not (PATCH_RE.search(it.get("title") or "") or "patchnotes" in (it.get("tags") or [])):
+            if it.get("it") or translation_gave_up(it) or not (PATCH_RE.search(it.get("title") or "") or "patchnotes" in (it.get("tags") or [])):
                 continue
             try:
                 tr = translate_item(g["name"], it)
+                if tr is None:
+                    # testo troppo corto o troppo lungo: non c'è nulla da chiedere a Gemini. Non deve consumare il budget,
+                    # altrimenti a ogni esecuzione blocca le traduzioni degli altri giochi.
+                    continue
                 time.sleep(7)
             except RateLimited as e:
                 print(f"  limite Gemini raggiunto: le traduzioni continuano alla prossima esecuzione ({str(e)[:300]})", file=sys.stderr)
                 return
             except Exception as e:  # noqa
                 print(f"  traduzione Gemini non riuscita ({str(e)[:200]})", file=sys.stderr)
+                f = it.get("it_fail") or {}
+                it["it_fail"] = {"n": f.get("n", 0) + 1, "ts": int(time.time())}
                 budget -= 1
+                time.sleep(7)  # la richiesta c'è stata comunque: si rispetta il limite al minuto
                 continue
             budget -= 1
-            if tr:
-                it["it"] = tr
+            it["it"] = tr
+            it.pop("it_fail", None)
 
 
 def ntfy_send(topics, title, message, tags, click=""):
@@ -410,14 +441,21 @@ def send_digest(games, since):
 
 def main():
     try:
-        prev = json.load(open(OUT, encoding="utf-8"))
+        with open(OUT, encoding="utf-8") as f:
+            prev = json.load(f)
     except Exception:
         prev = {}
     now = int(time.time())
     pg = prev.get("games")
     old = {str(g["appid"]): g for g in pg if isinstance(g, dict)} if isinstance(pg, list) else {}
     games, ok = [], 0
-    for g in load_games():
+    try:
+        wanted = load_games()
+    except Exception as e:  # noqa
+        # comando di GitHub Actions: l'errore compare ben visibile nell'esecuzione (utile se games.json si modifica da telefono)
+        print(f"::error file=games.json::games.json non valido: {e}")
+        sys.exit(1)
+    for g in wanted:
         key = str(g["appid"])
         o = old.get(key, {})
         name = g["name"] or o.get("name") or ""
@@ -454,7 +492,9 @@ def main():
     # riepilogo serale (una volta al giorno, dopo l'ora stabilita)
     digest_ts = prev.get("digest_ts") or now
     local = datetime.datetime.fromtimestamp(now, TZ)
-    if local.hour >= DIGEST_HOUR and datetime.datetime.fromtimestamp(digest_ts, TZ).date() < local.date():
+    # Con ok == 0 (Steam irraggiungibile) i dati non vengono salvati: senza questo controllo digest_ts non si
+    # aggiornerebbe e il riepilogo verrebbe rimandato a ogni esecuzione.
+    if ok > 0 and local.hour >= DIGEST_HOUR and datetime.datetime.fromtimestamp(digest_ts, TZ).date() < local.date():
         send_digest(games, digest_ts)
         digest_ts = now
     add_translations(games)
