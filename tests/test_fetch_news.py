@@ -289,7 +289,7 @@ class Outbox(unittest.TestCase):
             self.assertEqual(seen, [False])
 
     def _run_main(self, fetched, prev_items, notify_topic="t"):
-        prev = {"updated": 1, "digest_ts": 2 ** 40, "games": [{"appid": 1, "name": "G1", "items": prev_items}]}
+        prev = {"updated": 1, "digest_ts": 4102444800, "games": [{"appid": 1, "name": "G1", "items": prev_items}]}
         files = {"games.json": {"games": [{"appid": 1, "name": "G1"}]}, "config.json": {"ntfyTopic": notify_topic}, "data/news.json": prev}
         return files, fetched
 
