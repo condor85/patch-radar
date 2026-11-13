@@ -44,11 +44,22 @@ jobs:
           # GitHub spegne i controlli programmati dopo 60 giorni senza attività: se l'ultimo commit ha più di 25 giorni ne facciamo uno
           LAST=$(git log -1 --format=%ct); NOW=$(date +%s)
           if [ $((NOW - LAST)) -gt 2160000 ]; then date -u +"%Y-%m-%dT%H:%M:%SZ" > data/keepalive.txt; fi
-          git add data/news.json data/keepalive.txt 2>/dev/null || git add data/news.json
+          git add -A data   # news.json, players.json ed eventuale keepalive.txt
           if ! git diff --cached --quiet; then
             git commit -m "Aggiorna annunci Steam"
             git push || (git pull --rebase -X theirs origin main && git push)
           fi
+
+      # Le notifiche partono solo QUI, dopo che i dati sono stati salvati: se il salvataggio fallisce questo passo
+      # non viene eseguito e la volta dopo gli stessi annunci risultano ancora nuovi (niente notifiche doppie).
+      - name: Invia le notifiche
+        if: steps.fetch.outputs.changed == 'true'
+        continue-on-error: true   # un problema di ntfy non deve bloccare la pubblicazione del sito
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_SIGN_KEY: ${{ secrets.NTFY_SIGN_KEY }}
+          SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+        run: python3 scripts/fetch_news.py --send
 
       - name: Prepara il sito
         if: steps.fetch.outputs.changed == 'true' || github.event_name != 'schedule'
