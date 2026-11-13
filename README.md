@@ -6,12 +6,16 @@ Web app (PWA) con le note di aggiornamento Steam dei giochi elencati in `games.j
 - Notifica sul telefono con [ntfy](https://ntfy.sh) quando esce una nuova patch (argomento in `config.json`).
 
 ## Aggiungere o togliere un gioco
-Modifica `games.json` (anche da telefono, con l'editor web di GitHub): basta l'`appid` Steam, il nome lo trova da solo.
+**Dal telefono, senza GitHub:** ⚙ → Amministratore → password → cerca il gioco per nome (o incolla il link Steam) → «+ Aggiungi».
+Serve il ponte gratuito descritto in [`worker/README.md`](worker/README.md), da installare una sola volta.
+
+**A mano:** modifica `games.json` con l'editor web di GitHub: basta l'`appid` Steam, il nome lo trova da solo.
 L'appid è il numero nell'indirizzo del negozio: `store.steampowered.com/app/`**`892970`**`/Valheim/`.
-Dopo il salvataggio il sito si aggiorna da solo in circa un minuto.
+In entrambi i casi il sito si aggiorna da solo in circa un minuto.
 
 ## Funzioni
 
+- **Home** all'apertura: l'ultima patch di ogni gioco, con titolo, etichette e riassunto; da lì si legge la nota o si passa a tutte le patch del gioco.
 - **Benvenuto** alla prima apertura (installa, notifiche, giochi) e **Invita un amico** con link, QR e WhatsApp (⚙ → Condividi l'app).
 - **Riepilogo** delle novità dall'ultima visita, con scorrimento tra le patch a schermo intero (swipe o frecce).
 - **Etichette automatiche** (Nuovi contenuti, Bilanciamento, Prestazioni, Correzioni) e filtri; **ricerca** nei testi di tutto lo storico (fino a 60 pubblicazioni per gioco); **Salvati** per rileggere dopo.
@@ -25,7 +29,8 @@ Gli argomenti ntfy sono `<argomento>-<appid>` (patch), `-news`, `-sale`, `-diges
 ## Sicurezza
 
 - **L'argomento ntfy non è un segreto**: sta in `config.json`, che in un repository pubblico lo rende leggibile a tutti, e chiunque lo conosca può scriverci. Due difese: le **notifiche firmate** (qui sotto) e il service worker, che dalle notifiche apre solo link dell'app e di `store.steampowered.com` / `steamcommunity.com`.
-- **Token di amministrazione**: è salvato nel browser. Usa un token *fine-grained* limitato a questo repository (Contents: lettura e scrittura) con scadenza (90 giorni); alla scadenza l'app lo scarta e ne chiede uno nuovo.
+- **Ponte di amministrazione**: il token GitHub sta solo sul ponte (Cloudflare); il telefono conosce una password. Vedi `worker/README.md`.
+- **Token di amministrazione** (metodo alternativo, senza ponte): è salvato nel browser. Usa un token *fine-grained* limitato a questo repository (Contents: lettura e scrittura) con scadenza (90 giorni); alla scadenza l'app lo scarta e ne chiede uno nuovo.
 - **Content-Security-Policy**: `index.html` limita i domini con cui la pagina può comunicare. Se aggiungi un servizio esterno al codice, aggiungilo anche a `connect-src` (o `img-src`).
 - **Servizi di terzi**: l'app legge solo dati del proprio sito (`data/news.json`, `data/players.json`) e, per lo stato dell'Action, `api.github.com`. Anche i giocatori online li legge l'Action. L'unico uso di servizi esterni (proxy CORS) è la **ricerca per nome** nell'amministrazione, e parte solo dopo conferma; incollando il link Steam del gioco (o il numero) non si usa nulla di esterno e il nome lo ricava l'Action.
 - Il nome dell'argomento è letto da `config.json`; il secret `NTFY_TOPIC` vale solo come ripiego.
@@ -49,4 +54,5 @@ Il controllo accoda le notifiche in `outbox.json` (non finisce nel repository); 
 ```
 python3 -m unittest discover -s tests -v   # script di aggiornamento (fetch_news.py, firma, coda notifiche)
 node tests/sw.test.js                      # service worker (cache, notifiche, firme verificate con WebCrypto)
+node tests/worker.test.mjs                 # ponte di amministrazione
 ```

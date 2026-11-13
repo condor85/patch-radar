@@ -1,0 +1,14 @@
+# Solo se usi la riga di comando (npx wrangler deploy). Da pannello web non serve.
+name = "patch-radar-admin"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+
+[vars]
+REPO = "condor85/patch-radar"
+ALLOWED_ORIGIN = "https://condor85.github.io"
+
+# Facoltativo ma consigliato (blocca chi prova a indovinare la password):
+# crea un archivio KV chiamato «RL» e togli il commento qui sotto.
+# [[kv_namespaces]]
+# binding = "RL"
+# id = "<id dell'archivio KV>"

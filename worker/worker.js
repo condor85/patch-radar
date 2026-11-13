@@ -1,0 +1,221 @@
+/* Ponte di amministrazione di Game Patch Radar (Cloudflare Worker).
+
+   Permette di aggiungere o togliere giochi dall'app senza token GitHub sul telefono: il telefono conosce solo una
+   password, il token GitHub resta qui, nei "Secrets" di Cloudflare.
+
+   Variabili da configurare (vedi worker/README.md):
+     ADMIN_PASSWORD  (secret)  password dell'amministratore, almeno 12 caratteri
+     GITHUB_TOKEN    (secret)  token fine-grained con «Contents: Read and write» solo su questo repository
+     REPO            (var)     es. condor85/patch-radar
+     ALLOWED_ORIGIN  (var)     es. https://condor85.github.io   (solo origine, senza percorso)
+     RL              (KV, facoltativo) tiene il conto dei tentativi di accesso sbagliati */
+
+const MAX_GAMES = 40;           // tetto ai giochi: protegge la durata del controllo orario
+const MAX_BODY = 2048;          // byte accettati in una richiesta
+const FAIL_LIMIT = 5;           // tentativi sbagliati prima del blocco temporaneo
+const FAIL_WINDOW = 900;        // secondi di blocco (richiede il KV «RL»)
+const MIN_PASSWORD = 12;
+const BRANCH = "main";
+
+class HttpError extends Error {
+  constructor(status, message) { super(message); this.status = status; }
+}
+
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+/* Confronto a tempo costante: si confrontano gli hash, che hanno sempre la stessa lunghezza. */
+async function sameSecret(a, b) {
+  const [x, y] = await Promise.all([crypto.subtle.digest("SHA-256", enc.encode(String(a))), crypto.subtle.digest("SHA-256", enc.encode(String(b)))]);
+  const u = new Uint8Array(x), v = new Uint8Array(y);
+  let diff = 0;
+  for (let i = 0; i < u.length; i++) diff |= u[i] ^ v[i];
+  return diff === 0;
+}
+
+function cleanName(s) {
+  return String(s == null ? "" : s).replace(/[<>\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+function parseAppId(v) {
+  const n = typeof v === "string" && /^\d{1,9}$/.test(v.trim()) ? Number(v.trim()) : v;
+  return Number.isInteger(n) && n > 0 && n <= 999999999 ? n : null;
+}
+
+function corsHeaders(env, origin) {
+  const h = {"Vary": "Origin", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"};
+  if (origin && origin === env.ALLOWED_ORIGIN) {
+    h["Access-Control-Allow-Origin"] = origin;
+    h["Access-Control-Allow-Methods"] = "POST, OPTIONS";
+    h["Access-Control-Allow-Headers"] = "Authorization, Content-Type";
+    h["Access-Control-Max-Age"] = "86400";
+  }
+  return h;
+}
+
+function json(env, origin, status, body) {
+  return new Response(JSON.stringify(body), {status, headers: {...corsHeaders(env, origin), "Content-Type": "application/json; charset=utf-8"}});
+}
+
+/* ---------- Accesso ---------- */
+async function failCount(env, ip) {
+  if (!env.RL) return 0;
+  try { return Number(await env.RL.get("f:" + ip)) || 0; } catch { return 0; }
+}
+async function addFail(env, ip) {
+  if (!env.RL) return;
+  try { await env.RL.put("f:" + ip, String((await failCount(env, ip)) + 1), {expirationTtl: FAIL_WINDOW}); } catch {}
+}
+async function clearFails(env, ip) {
+  if (!env.RL) return;
+  try { await env.RL.delete("f:" + ip); } catch {}
+}
+
+async function authenticate(request, env) {
+  if (!env.ADMIN_PASSWORD || env.ADMIN_PASSWORD.length < MIN_PASSWORD || !env.GITHUB_TOKEN || !env.REPO || !env.ALLOWED_ORIGIN) {
+    throw new HttpError(503, "Il ponte non è configurato correttamente.");
+  }
+  const ip = request.headers.get("CF-Connecting-IP") || "?";
+  if ((await failCount(env, ip)) >= FAIL_LIMIT) throw new HttpError(429, "Troppi tentativi sbagliati. Riprova tra qualche minuto.");
+  const m = /^Bearer (.{1,200})$/.exec(request.headers.get("Authorization") || "");
+  if (!m || !(await sameSecret(m[1], env.ADMIN_PASSWORD))) {
+    await addFail(env, ip);
+    throw new HttpError(401, "Password errata.");
+  }
+  await clearFails(env, ip);
+}
+
+/* ---------- GitHub ---------- */
+const bytesToB64 = bytes => { let s = ""; for (const b of bytes) s += String.fromCharCode(b); return btoa(s); };
+const b64ToBytes = t => Uint8Array.from(atob(t.replace(/\n/g, "")), c => c.charCodeAt(0));
+
+async function gh(env, path, init = {}) {
+  const r = await fetch("https://api.github.com/repos/" + env.REPO + path, {
+    ...init,
+    headers: {Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "patch-radar-bridge", Authorization: "Bearer " + env.GITHUB_TOKEN, "Content-Type": "application/json"},
+    signal: AbortSignal.timeout(10000)
+  });
+  return r;
+}
+
+/* Legge un file JSON del repository, lo modifica con `mutate` e lo riscrive. Se nel frattempo il file è cambiato riprova. */
+async function editJson(env, path, mutate, message) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = await gh(env, "/contents/" + path + "?ref=" + BRANCH);
+    if (!r.ok) throw new HttpError(502, "Il ponte non riesce a leggere il repository: controlla il token GitHub.");
+    const f = await r.json();
+    let current;
+    try { current = JSON.parse(dec.decode(b64ToBytes(f.content))); } catch { throw new HttpError(502, "Il file " + path + " non è leggibile."); }
+    const next = mutate(current);
+    if (next === null) return {changed: false, data: current};
+    const w = await gh(env, "/contents/" + path, {method: "PUT", body: JSON.stringify({message: "[app] " + message, branch: BRANCH, sha: f.sha, content: bytesToB64(enc.encode(JSON.stringify(next, null, 2) + "\n"))})});
+    if (w.ok) return {changed: true, data: next};
+    if (w.status !== 409 && w.status !== 422) throw new HttpError(502, "Il ponte non riesce a scrivere sul repository: controlla il token GitHub.");
+  }
+  throw new HttpError(409, "Il repository è stato modificato nel frattempo. Riprova.");
+}
+
+/* ---------- Steam ---------- */
+async function steamJson(url) {
+  let r;
+  try { r = await fetch(url, {signal: AbortSignal.timeout(8000), headers: {"User-Agent": "patch-radar-bridge"}}); }
+  catch { throw new HttpError(502, "Steam non risponde ora. Riprova tra poco."); }
+  if (!r.ok) throw new HttpError(502, "Steam non risponde ora. Riprova tra poco.");
+  try { return await r.json(); } catch { throw new HttpError(502, "Risposta di Steam non valida."); }
+}
+
+async function searchSteam(term) {
+  const d = await steamJson("https://store.steampowered.com/api/storesearch/?term=" + encodeURIComponent(term) + "&l=italian&cc=IT");
+  if (!d || !Array.isArray(d.items)) throw new HttpError(502, "Risposta di Steam non valida.");
+  const out = [];
+  for (const i of d.items) {
+    const appid = parseAppId(i && i.id), name = cleanName(i && i.name);
+    if (appid && name) out.push({appid, name});
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+/* Il nome non si fida mai del telefono: si legge da Steam, che conferma anche che l'appid esiste ed è un gioco. */
+async function steamGame(appid) {
+  const d = await steamJson("https://store.steampowered.com/api/appdetails?appids=" + appid + "&filters=basic&l=italian");
+  const e = d && d[String(appid)];
+  if (!e || !e.success || !e.data) throw new HttpError(422, "Su Steam non trovo un gioco con questo numero.");
+  if (e.data.type !== "game") throw new HttpError(422, "Questo numero non è un gioco (è un contenuto aggiuntivo, un video o un programma).");
+  const name = cleanName(e.data.name);
+  if (!name) throw new HttpError(422, "Steam non indica il nome del gioco.");
+  return {appid, name};
+}
+
+/* ---------- Azioni ---------- */
+async function readBody(request) {
+  const text = await request.text();
+  if (text.length > MAX_BODY) throw new HttpError(413, "Richiesta troppo grande.");
+  if (!text) return {};
+  try { const o = JSON.parse(text); return o && typeof o === "object" && !Array.isArray(o) ? o : {}; }
+  catch { throw new HttpError(400, "Richiesta non valida."); }
+}
+
+const ACTIONS = {
+  async "/login"() { return {ok: true}; },
+
+  async "/search"(env, body) {
+    const q = cleanName(body.q);
+    if (q.length < 2 || q.length > 60) throw new HttpError(400, "Scrivi almeno due lettere del nome.");
+    return {results: await searchSteam(q)};
+  },
+
+  async "/add"(env, body) {
+    const appid = parseAppId(body.appid);
+    if (!appid) throw new HttpError(400, "Numero app Steam non valido.");
+    const game = await steamGame(appid);
+    let duplicate = false;
+    const r = await editJson(env, "games.json", o => {
+      const list = Array.isArray(o.games) ? o.games : [];
+      if (list.some(x => Number(x.appid) === appid)) { duplicate = true; return null; }
+      if (list.length >= MAX_GAMES) throw new HttpError(409, "Raggiunto il massimo di " + MAX_GAMES + " giochi: toglierne uno prima di aggiungerne altri.");
+      return {...o, games: [...list, game]};
+    }, "Aggiungi " + game.name);
+    return {ok: true, added: !duplicate, game, count: (r.data.games || []).length};
+  },
+
+  async "/remove"(env, body) {
+    const appid = parseAppId(body.appid);
+    if (!appid) throw new HttpError(400, "Numero app Steam non valido.");
+    await editJson(env, "games.json", o => {
+      const list = Array.isArray(o.games) ? o.games : [];
+      const hit = list.find(x => Number(x.appid) === appid);
+      if (!hit) return null;
+      if (list.length <= 1) throw new HttpError(409, "Deve restare almeno un gioco.");
+      return {...o, games: list.filter(x => Number(x.appid) !== appid)};
+    }, "Rimuovi " + appid);
+    return {ok: true};
+  },
+
+  /* Nuovo argomento per le notifiche (se qualcuno scrive messaggi falsi sul vecchio). */
+  async "/topic"(env) {
+    const arr = new Uint8Array(6); crypto.getRandomValues(arr);
+    const topic = "patch-radar-" + [...arr].map(b => b.toString(16).padStart(2, "0")).join("");
+    await editJson(env, "config.json", o => ({...o, ntfyTopic: topic}), "Nuovo argomento notifiche");
+    return {ok: true, topic};
+  }
+};
+
+export default {
+  async fetch(request, env) {
+    const origin = request.headers.get("Origin") || "";
+    try {
+      if (origin && origin !== env.ALLOWED_ORIGIN) throw new HttpError(403, "Origine non consentita.");
+      if (request.method === "OPTIONS") return new Response(null, {status: 204, headers: corsHeaders(env, origin)});
+      const path = new URL(request.url).pathname;
+      const action = Object.prototype.hasOwnProperty.call(ACTIONS, path) ? ACTIONS[path] : null;
+      if (!action) throw new HttpError(404, "Non trovato.");
+      if (request.method !== "POST") throw new HttpError(405, "Metodo non consentito.");
+      await authenticate(request, env);
+      return json(env, origin, 200, await action(env, await readBody(request)));
+    } catch (e) {
+      if (e instanceof HttpError) return json(env, origin, e.status, {error: e.message});
+      return json(env, origin, 500, {error: "Errore del servizio. Riprova."});   // nessun dettaglio interno verso l'esterno
+    }
+  }
+};

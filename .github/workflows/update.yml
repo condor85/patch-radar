@@ -67,6 +67,13 @@ jobs:
           mkdir _site
           cp -r index.html manifest.webmanifest sw.js qr.js config.json icons data _site/
 
+      # Se in config.json c'è l'indirizzo del ponte di amministrazione ("adminApi"), lo aggiunge alla Content-Security-Policy
+      # del sito pubblicato (solo un'origine https valida). Se non va a buon fine il sito esce comunque, col ponte non raggiungibile.
+      - name: Abilita il ponte di amministrazione
+        if: steps.fetch.outputs.changed == 'true' || github.event_name != 'schedule'
+        continue-on-error: true
+        run: python3 scripts/csp_admin.py config.json _site/index.html
+
       - uses: actions/configure-pages@v5
         if: steps.fetch.outputs.changed == 'true' || github.event_name != 'schedule'
       - uses: actions/upload-pages-artifact@v4
