@@ -1,8 +1,24 @@
 {
   "games": [
-    {"appid": 892970, "name": "Valheim"},
-    {"appid": 1374490, "name": "RuneScape: Dragonwilds"},
-    {"appid": 1203620, "name": "Enshrouded"},
-    {"appid": 3321460, "name": "Crimson Desert"}
+    {
+      "appid": 892970,
+      "name": "Valheim"
+    },
+    {
+      "appid": 1374490,
+      "name": "RuneScape: Dragonwilds"
+    },
+    {
+      "appid": 1203620,
+      "name": "Enshrouded"
+    },
+    {
+      "appid": 3321460,
+      "name": "Crimson Desert"
+    },
+    {
+      "appid": 3751260,
+      "name": "The Blood of Dawnwalker"
+    }
   ]
 }
