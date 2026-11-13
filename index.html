@@ -17,9 +17,9 @@
 <meta name="apple-mobile-web-app-title" content="Patch Radar">
 <title>Game Patch Radar</title>
 <style>
-:root{color-scheme:dark;--bg:#0c1118;--bar:#0c1118d9;--panel:#151d28;--panel2:#1b2633;--line:#2a3747;--muted:#9eacbd;--text:#edf3fa;--accent:#83c7ff;--green:#8fdbb2;--warn:#f2c879;--btn-bg:#1b2b3c;--btn-line:#39516b;--soft:#111a24;--card2:#121a24;--sel-bg:#23364a;--sel-line:#385b7a;--nav-text:#c7d2df;--body-text:#c6d0dc;--rich-text:#d6dfe9;--sum-text:#d3e6f7;--green-bg:#17332a;--green-line:#3f6e5c;--green-text:#d9f5e7;--ban1:#15302a;--ban2:#112019;--new-bg:#182c3f;--new-line:#4a8a73;--sum-bg:#112233;--sum-line:#29425a;--warn-bg:#2a2412;--warn-line:#5c4d2a;--err:#ffd0c7;--err-line:#70463f;--err-bg:#2a1816;--tag-line:#3d566f;--tag-text:#b9dfff;--dim:#77889b;--link:#a8c9e8;--dot:#75879a;--spin:#63778b;--text-strong:#ffffff;--glow:#1a2a3b;}
-:root[data-theme="light"]{color-scheme:light;--bg:#f3f6fa;--bar:#f3f6fad9;--panel:#ffffff;--panel2:#eef2f7;--line:#d3dbe5;--muted:#5b6b7d;--text:#14202e;--accent:#0b6cb5;--green:#1a7a4c;--warn:#8a5a00;--btn-bg:#e6eef7;--btn-line:#b4c6da;--soft:#f0f4f9;--card2:#f7f9fc;--sel-bg:#dcebf9;--sel-line:#8fb4d8;--nav-text:#324559;--body-text:#2b3a4b;--rich-text:#1f2d3d;--sum-text:#17324d;--green-bg:#dff3e8;--green-line:#7fbf9f;--green-text:#14442c;--ban1:#e4f6ec;--ban2:#d5eedf;--new-bg:#e6f4ee;--new-line:#5aa585;--sum-bg:#e7f1fb;--sum-line:#b5cde4;--warn-bg:#fff4d6;--warn-line:#e0c36e;--err:#9a2b1b;--err-line:#e0a79f;--err-bg:#fde7e3;--tag-line:#9ab6d0;--tag-text:#1d5b8f;--dim:#5e6e80;--link:#1d5b8f;--dot:#8a9bad;--spin:#9fb0c2;--text-strong:#0b1b2b;--glow:#dbe9f7;}
-@media(prefers-color-scheme:light){:root:not([data-theme="dark"]){color-scheme:light;--bg:#f3f6fa;--bar:#f3f6fad9;--panel:#ffffff;--panel2:#eef2f7;--line:#d3dbe5;--muted:#5b6b7d;--text:#14202e;--accent:#0b6cb5;--green:#1a7a4c;--warn:#8a5a00;--btn-bg:#e6eef7;--btn-line:#b4c6da;--soft:#f0f4f9;--card2:#f7f9fc;--sel-bg:#dcebf9;--sel-line:#8fb4d8;--nav-text:#324559;--body-text:#2b3a4b;--rich-text:#1f2d3d;--sum-text:#17324d;--green-bg:#dff3e8;--green-line:#7fbf9f;--green-text:#14442c;--ban1:#e4f6ec;--ban2:#d5eedf;--new-bg:#e6f4ee;--new-line:#5aa585;--sum-bg:#e7f1fb;--sum-line:#b5cde4;--warn-bg:#fff4d6;--warn-line:#e0c36e;--err:#9a2b1b;--err-line:#e0a79f;--err-bg:#fde7e3;--tag-line:#9ab6d0;--tag-text:#1d5b8f;--dim:#5e6e80;--link:#1d5b8f;--dot:#8a9bad;--spin:#9fb0c2;--text-strong:#0b1b2b;--glow:#dbe9f7;}}
+:root{color-scheme:dark;--bg:#0c1118;--bar:#0c1118d9;--panel:#151d28;--panel2:#1b2633;--line:#2a3747;--muted:#9eacbd;--text:#edf3fa;--accent:#83c7ff;--green:#8fdbb2;--warn:#f2c879;--btn-bg:#1b2b3c;--btn-line:#39516b;--soft:#111a24;--card2:#121a24;--sel-bg:#23364a;--sel-line:#385b7a;--nav-text:#c7d2df;--body-text:#c6d0dc;--rich-text:#d6dfe9;--sum-text:#d3e6f7;--green-bg:#17332a;--green-line:#3f6e5c;--green-text:#d9f5e7;--ban1:#15302a;--ban2:#112019;--new-bg:#182c3f;--new-line:#4a8a73;--sum-bg:#112233;--sum-line:#29425a;--warn-bg:#2a2412;--warn-line:#5c4d2a;--err:#ffd0c7;--err-line:#70463f;--err-bg:#2a1816;--tag-line:#3d566f;--tag-text:#b9dfff;--dim:#77889b;--link:#a8c9e8;--dot:#75879a;--spin:#63778b;--text-strong:#ffffff;--glow:#1a2a3b;--on-accent:#04243d;}
+:root[data-theme="light"]{color-scheme:light;--bg:#f3f6fa;--bar:#f3f6fad9;--panel:#ffffff;--panel2:#eef2f7;--line:#d3dbe5;--muted:#5b6b7d;--text:#14202e;--accent:#0b6cb5;--green:#1a7a4c;--warn:#8a5a00;--btn-bg:#e6eef7;--btn-line:#b4c6da;--soft:#f0f4f9;--card2:#f7f9fc;--sel-bg:#dcebf9;--sel-line:#8fb4d8;--nav-text:#324559;--body-text:#2b3a4b;--rich-text:#1f2d3d;--sum-text:#17324d;--green-bg:#dff3e8;--green-line:#7fbf9f;--green-text:#14442c;--ban1:#e4f6ec;--ban2:#d5eedf;--new-bg:#e6f4ee;--new-line:#5aa585;--sum-bg:#e7f1fb;--sum-line:#b5cde4;--warn-bg:#fff4d6;--warn-line:#e0c36e;--err:#9a2b1b;--err-line:#e0a79f;--err-bg:#fde7e3;--tag-line:#9ab6d0;--tag-text:#1d5b8f;--dim:#5e6e80;--link:#1d5b8f;--dot:#8a9bad;--spin:#9fb0c2;--text-strong:#0b1b2b;--glow:#dbe9f7;--on-accent:#ffffff;}
+@media(prefers-color-scheme:light){:root:not([data-theme="dark"]){color-scheme:light;--bg:#f3f6fa;--bar:#f3f6fad9;--panel:#ffffff;--panel2:#eef2f7;--line:#d3dbe5;--muted:#5b6b7d;--text:#14202e;--accent:#0b6cb5;--green:#1a7a4c;--warn:#8a5a00;--btn-bg:#e6eef7;--btn-line:#b4c6da;--soft:#f0f4f9;--card2:#f7f9fc;--sel-bg:#dcebf9;--sel-line:#8fb4d8;--nav-text:#324559;--body-text:#2b3a4b;--rich-text:#1f2d3d;--sum-text:#17324d;--green-bg:#dff3e8;--green-line:#7fbf9f;--green-text:#14442c;--ban1:#e4f6ec;--ban2:#d5eedf;--new-bg:#e6f4ee;--new-line:#5aa585;--sum-bg:#e7f1fb;--sum-line:#b5cde4;--warn-bg:#fff4d6;--warn-line:#e0c36e;--err:#9a2b1b;--err-line:#e0a79f;--err-bg:#fde7e3;--tag-line:#9ab6d0;--tag-text:#1d5b8f;--dim:#5e6e80;--link:#1d5b8f;--dot:#8a9bad;--spin:#9fb0c2;--text-strong:#0b1b2b;--glow:#dbe9f7;--on-accent:#ffffff;}}
 html{overscroll-behavior-y:contain}
 *{box-sizing:border-box}
 body{margin:0;background:radial-gradient(ellipse at 20% 0%,var(--glow) 0,transparent 42%),var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;min-height:100vh}
@@ -181,6 +181,32 @@ main{max-width:880px;margin:0 auto;padding:12px}
 .v-bar{gap:6px}
 .v-bar .ibtn{width:34px;height:34px}
 .seg{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+/* ---------- Aspetto semplificato (v3) ---------- */
+body{font-size:15.5px;line-height:1.5}
+button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.abtn{min-height:38px;padding:8px 13px;border-radius:11px}
+.abtn.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:750}
+.abtn.sq{min-width:40px;padding:8px 0;font-size:16px;line-height:1;text-align:center}
+.abtn.sq.on{background:var(--sel-bg)}
+.card{border-radius:16px;padding:16px;background:var(--panel)}
+.card h3{font-size:16px;font-weight:700}
+.actions{gap:8px;margin-top:14px}
+.game.home{padding:4px 13px}
+.game.home.active .newtxt{display:none}
+.cards.home{grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}
+.hcard{padding:0;overflow:hidden;cursor:pointer;display:flex;flex-direction:column}
+.hcard .hcover{display:block;width:100%;aspect-ratio:460/215;object-fit:cover;background:var(--soft)}
+.hcard .hbody{padding:13px 15px 15px;display:flex;flex-direction:column;flex:1}
+.hcard.is-new{border-color:var(--green-line);box-shadow:0 0 0 1px var(--green-line)}
+.hcard .htop{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+.hcard h3{margin:0 0 6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hcard .hsum{font-size:calc(13px*var(--tz,1));color:var(--body-text);overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;margin:0}
+.hcard .lbls{margin:0 0 7px}
+.hcard .actions{margin-top:auto;padding-top:13px}
+.hcard.pend{cursor:default;padding:14px 15px}
+.hcard.pend h3{margin:0 0 3px;-webkit-line-clamp:unset;display:block}
+.hint{font-size:12px;color:var(--muted);margin:0 2px 10px}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
 <body>
@@ -211,8 +237,7 @@ main{max-width:880px;margin:0 auto;padding:12px}
 <footer>
  I dati vengono recuperati dagli annunci Steam. La pagina si aggiorna all'apertura e poi ogni 30 minuti; gli ultimi dati restano salvati sul dispositivo.
  <br><a id="ntfyLink" href="#">🔔 Gestisci le notifiche</a>
- <br>Le schede mostrano un'anteprima: usa «Mostra tutto» o «Schermo intero» per leggere la nota completa.
- <br>Game Patch Radar · By Pugno
+  <br>Game Patch Radar · By Pugno
 </footer>
 
 <div class="viewer" id="manager" role="dialog" aria-modal="true" aria-label="Scegli i giochi">
@@ -258,7 +283,7 @@ main{max-width:880px;margin:0 auto;padding:12px}
 </div>
 
 <script>
-const APP_VERSION = "2026-11-13.2";
+const APP_VERSION = "2026-11-13.3";
 /* Se online c'è una versione più recente dell'app, la ricarica da sola (una volta sola per versione). */
 (async () => {
  if (location.protocol === "file:") return;
@@ -317,10 +342,12 @@ function applyPending(list) {
 function currentList() { return ORDER.map(k => ({appid: GAMES[k].appid, name: GAMES[k].name, image: GAMES[k].image, price: GAMES[k].price, players: GAMES[k].players})); }
 const STORE_KEY = "game_patch_radar_v3";
 const REFRESH_MS = 30 * 60 * 1000;
-const PREVIEW_CHARS = 700;
+const PREVIEW_CHARS = 450;
 const ELLIPSIS = /(\.\.\.|…)\s*$/;
 
 let selected = "892970";
+let home = true;            // schermata principale (ultima patch di ogni gioco): è quella che si apre all'avvio
+const isHome = () => home && !crossGame();
 let lastRefresh = 0;
 const PAGE = 20;
 let showLimit = PAGE;       // quante schede mostrare
@@ -331,7 +358,6 @@ const labelFilter = new Set();
 const cache = {};      // gioco -> [annunci]
 const trCache = {};    // chiave annuncio -> {title, text}
 const showIt = {};     // chiave -> mostra italiano
-const expanded = {};   // chiave -> scheda espansa
 const $ = id => document.getElementById(id);
 
 /* ---------- Nuovi aggiornamenti: cosa hai già visto ---------- */
@@ -393,10 +419,17 @@ function toast(msg) {
 function plural(n) { return n + (n === 1 ? " nuovo aggiornamento" : " nuovi aggiornamenti"); }
 function renderNav() {
  const list = $("gameList"); list.innerHTML = "";
+ const hb = document.createElement("button"); hb.type = "button";
+ const tn = totalNew();
+ hb.className = "game home" + (home ? " active" : "") + (tn ? " has-new" : "");
+ hb.append(document.createTextNode("🏠 Home"));
+ if (tn) { const t = document.createElement("span"); t.className = "newtxt"; t.textContent = String(tn); hb.append(t); }
+ hb.addEventListener("click", goHome);
+ list.append(hb);
  for (const k of visibleKeys()) {
   const n = newItems(k).length;
   const b = document.createElement("button"); b.type = "button";
-  b.className = "game" + (k === selected ? " active" : "") + (n ? " has-new" : "");
+  b.className = "game" + (k === selected && !home ? " active" : "") + (n ? " has-new" : "");
   b.append(coverImg(GAMES[k].appid, "cover", GAMES[k].image), document.createTextNode(GAMES[k].name));
   if (n) { const t = document.createElement("span"); t.className = "newtxt"; t.textContent = n + (n === 1 ? " nuovo" : " nuovi"); b.append(t); }
   b.addEventListener("click", () => selectGame(k));
@@ -428,10 +461,17 @@ function renderBanner() {
  }
  el.append(t, recap, all, chips);
 }
+function goHome() {
+ if (!home && viewed[selected] && !crossGame()) markRead(selected);
+ viewed[selected] = false;
+ home = true; query = ""; savedView = false; searchOpen = false; $("q").value = ""; showLimit = PAGE;
+ render(); window.scrollTo(0, 0);
+}
 function selectGame(k) {
- if (k !== selected && viewed[selected] && !crossGame()) markRead(selected);
+ if ((k !== selected || home) && viewed[selected] && !crossGame()) markRead(selected);
+ home = false;
  query = ""; savedView = false; searchOpen = false; $("q").value = ""; showLimit = PAGE;
- selected = k; render();
+ selected = k; render(); window.scrollTo(0, 0);
  if (cache[selected]) setStatus("Dati caricati · premi Aggiorna per verificare eventuali novità", "ok");
  else refreshAll();
 }
@@ -819,7 +859,86 @@ async function adminTopic() {
  CFG.ntfyTopic = topic; setTopicLink();
  return topic;
 }
+/* ---------- Amministratore tramite ponte (consigliato): sul telefono resta solo una password, il token GitHub sta sul ponte ---------- */
+const BRIDGE_KEY = "game_patch_radar_bridge_v1";
+let bridgePw = "";
+function bridgeUrl() { return typeof CFG.adminApi === "string" && /^https:\/\/[a-z0-9.-]+$/.test(CFG.adminApi) ? CFG.adminApi : ""; }
+function loadBridge() { try { bridgePw = localStorage.getItem(BRIDGE_KEY) || ""; } catch {} }
+function bridgeLogout() { bridgePw = ""; try { localStorage.removeItem(BRIDGE_KEY); } catch {} }
+async function bridge(path, body) {
+ let r;
+ try { r = await fetch(bridgeUrl() + path, {method: "POST", headers: {"Content-Type": "application/json", Authorization: "Bearer " + bridgePw}, body: JSON.stringify(body || {}), cache: "no-store", signal: AbortSignal.timeout(20000)}); }
+ catch { throw new Error("Il ponte non risponde. Controlla la connessione e riprova."); }
+ let d = {}; try { d = await r.json(); } catch {}
+ if (r.status === 401) bridgeLogout();
+ if (!r.ok) throw new Error(d.error || "Errore " + r.status);
+ return d;
+}
+async function renderBridgeAdmin() {
+ const box = $("adminBox"); box.innerHTML = "";
+ if (!bridgePw) {
+  const inp = h("input", {type: "password", placeholder: "Password amministratore", autocomplete: "current-password"});
+  const go = h("button", {class: "abtn pri", type: "button", onclick: async () => {
+   const v = inp.value; if (!v) return;
+   bridgePw = v; go.disabled = true;
+   try { await bridge("/login"); try { localStorage.setItem(BRIDGE_KEY, v); } catch {} renderAdmin(); }
+   catch (e) { bridgePw = ""; go.disabled = false; msgEl(box, e.message, false); }
+  }}, "Accedi");
+  inp.addEventListener("keydown", e => { if (e.key === "Enter") go.click(); });
+  box.append(h("p", {}, "Inserisci la password dell'amministratore per aggiungere o togliere giochi. Resta salvata solo su questo dispositivo."), inp, h("div", {class: "row"}, go));
+  return;
+ }
+ box.append(h("h4", {}, "Aggiungi un gioco"));
+ const q = h("input", {type: "search", placeholder: "Nome del gioco o link Steam", autocomplete: "off", enterkeyhint: "search"});
+ const res = h("div", {});
+ const add = async (g, btn) => {
+  btn.disabled = true;
+  try {
+   const d = await bridge("/add", {appid: g.appid});
+   if (d.added) { pending.add.push({appid: d.game.appid, name: d.game.name, ts: Date.now()}); savePending(); setGames(applyPending(currentList())); }
+   toast(d.added ? "✓ " + d.game.name + " aggiunto. Per tutti compare in circa un minuto." : "Il gioco c'era già.");
+   afterGamesChange();
+  } catch (e) { btn.disabled = false; msgEl(box, e.message, false); }
+ };
+ const row = (g, has) => h("div", {class: "row"}, h("span", {class: "nm"}, g.name), has ? h("span", {}, "già presente") : h("button", {class: "abtn", type: "button", onclick: e => add(g, e.target)}, "+ Aggiungi"));
+ const doSearch = async () => {
+  const term = q.value.trim(); if (!term) return;
+  const id = parseAppId(term);
+  res.innerHTML = "";
+  if (id) { res.append(row({appid: id, name: "App Steam n. " + id}, currentList().some(x => Number(x.appid) === id))); return; }
+  res.append(h("p", {}, "Cerco…"));
+  try {
+   const d = await bridge("/search", {q: term}); res.innerHTML = "";
+   if (!d.results.length) res.append(h("p", {}, "Nessun risultato. Prova un altro nome o incolla il link della pagina Steam."));
+   for (const g of d.results) res.append(row(g, currentList().some(x => Number(x.appid) === Number(g.appid))));
+  } catch (e) { res.innerHTML = ""; msgEl(box, e.message, false); }
+ };
+ q.addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
+ box.append(q, h("div", {class: "row"}, h("button", {class: "abtn pri", type: "button", onclick: doSearch}, "🔍 Cerca")), res);
+ box.append(h("h4", {}, "Giochi dell'app (per tutti)"));
+ for (const g of currentList()) {
+  box.append(h("div", {class: "row"}, h("span", {class: "nm"}, g.name), h("button", {class: "abtn danger", type: "button", onclick: async e => {
+   if (!confirm("Eliminare «" + g.name + "» dall'app per tutti?")) return;
+   e.target.disabled = true;
+   try {
+    await bridge("/remove", {appid: g.appid});
+    pending.remove.push({id: Number(g.appid), ts: Date.now()}); savePending(); setGames(applyPending(currentList()));
+    toast("✓ Gioco eliminato dall'app."); afterGamesChange();
+   } catch (err) { e.target.disabled = false; msgEl(box, err.message, false); }
+  }}, "🗑 Elimina")));
+ }
+ box.append(h("h4", {}, "Notifiche"));
+ box.append(h("p", {}, "Se qualcuno manda messaggi falsi sull'argomento delle notifiche, creane uno nuovo: gli altri passano al nuovo da soli."));
+ box.append(h("div", {class: "row"}, h("button", {class: "abtn", type: "button", onclick: async e => {
+  if (!confirm("Creare un nuovo argomento? Gli altri passano al nuovo da soli alla prossima apertura dell'app.")) return;
+  e.target.disabled = true;
+  try { const d = await bridge("/topic"); CFG.ntfyTopic = d.topic; setTopicLink(); msgEl(box, "Nuovo argomento creato. Le notifiche si aggiornano da sole.", true); } catch (err) { msgEl(box, err.message, false); }
+  e.target.disabled = false;
+ }}, "🔄 Cambia argomento")));
+ box.append(h("div", {class: "row"}, h("button", {class: "abtn", type: "button", onclick: () => { bridgeLogout(); renderAdmin(); }}, "Esci dalla modalità amministratore")));
+}
 async function renderAdmin() {
+ if (bridgeUrl()) return renderBridgeAdmin();
  const box = $("adminBox"); box.innerHTML = "";
  if (!adminToken) {
   const inp = h("input", {type: "password", placeholder: "Incolla qui il token GitHub", autocomplete: "off"});
@@ -985,6 +1104,68 @@ function visibleEntries() {
  return list;
 }
 
+function iconBtn(label, title, fn, on) {
+ const b = mkBtn(label, fn, "sq" + (on ? " on" : "")); b.setAttribute("aria-label", title); b.title = title; return b;
+}
+
+/* ---------- Schermata principale: l'ultima patch di ogni gioco ---------- */
+function latestOf(key) {
+ let patch = null, any = null;
+ for (const it of cache[key] || []) {
+  if (!any || (it.date || 0) > (any.date || 0)) any = it;
+  if (isPatchItem(it) && (!patch || (it.date || 0) > (patch.date || 0))) patch = it;
+ }
+ return patch || any;   // se un gioco non ha patch vere si mostra l'annuncio più recente
+}
+function homeEntries() {
+ const out = [];
+ for (const k of visibleKeys()) { const item = latestOf(k); if (item) out.push({key: k, item}); }
+ return out.sort((a, b) => (b.item.date || 0) - (a.item.date || 0));
+}
+function agoLabel(unix) {
+ if (!unix) return "";
+ const day = t => { const x = new Date(t); x.setHours(0, 0, 0, 0); return x.getTime(); };
+ const d = Math.round((day(Date.now()) - day(unix * 1000)) / 86400000);
+ if (d === 0) return "oggi";
+ if (d === 1) return "ieri";
+ if (d > 1 && d < 14) return d + " giorni fa";
+ try { return new Intl.DateTimeFormat("it-IT", {day: "numeric", month: "short", year: "numeric"}).format(new Date(unix * 1000)); } catch { return ""; }
+}
+function openFromHome(list, idx) {
+ markRead(list[idx].key);
+ openViewer(list, idx);
+ render();
+}
+function buildHomeCard(entry, list, idx) {
+ const {key, item} = entry, game = GAMES[key];
+ const n = newItems(key).length, fresh = isNew(key, item);
+ const article = h("article", {class: "card hcard" + (fresh ? " is-new" : "")});
+ const ver = versionOf(item.title);
+ const ft = fullText(item);
+ const text = item.summary || (ft.replace(/\s+/g, " ").slice(0, 240) + (ft.length > 240 ? "…" : ""));
+ const body = h("div", {class: "hbody"},
+  h("div", {class: "htop"}, h("span", {}, h("span", {class: "gname"}, game.name), fresh ? " " : "", fresh ? h("span", {class: "tag new"}, n > 1 ? n + " NUOVE" : "NUOVA") : ""),
+   h("span", {class: "date", title: dateLabel(item.date)}, agoLabel(item.date) + (ver ? " · v" + ver : ""))),
+  h("h3", {}, (item.it && item.it.title) || item.title || "Aggiornamento"));
+ const lb = labelsEl(item); if (lb) body.append(lb);
+ if (text) body.append(h("p", {class: "hsum"}, text));
+ body.append(h("div", {class: "actions"}, mkBtn("Leggi", () => openFromHome(list, idx), "pri"), mkBtn("Tutte le patch ›", () => selectGame(key))));
+ article.append(coverImg(game.appid, "hcover", game.image), body);
+ article.addEventListener("click", e => { if (!e.target.closest("button, a")) openFromHome(list, idx); });
+ return article;
+}
+function renderHome(box) {
+ const list = homeEntries();
+ $("count").textContent = list.length ? "La patch più recente di ogni gioco · tocca per leggerla" : "In attesa dei dati";
+ list.forEach((e, i) => box.append(buildHomeCard(e, list, i)));
+ const shown = new Set(list.map(e => e.key));
+ for (const k of visibleKeys()) {
+  if (shown.has(k)) continue;
+  box.append(h("article", {class: "card hcard pend"}, h("h3", {}, GAMES[k].name),
+   h("div", {class: "date"}, cache[k] ? "Nessun annuncio recente." : "Dati non ancora disponibili: arrivano al prossimo controllo.")));
+ }
+}
+
 function buildCard(entry, list, idx) {
  const {key, item} = entry, game = GAMES[key];
  const ik = itemKey(item), tr = showIt[ik] && trCache[ik];
@@ -995,22 +1176,19 @@ function buildCard(entry, list, idx) {
   fresh ? h("span", {class: "tag new"}, "NUOVO") : h("span", {class: "tag"}, "STEAM"));
  const title = h("h3", {}, (tr ? tr.title : item.title) || "Aggiornamento");
  const full = (tr ? tr.text : fullText(item)) || "Apri la pubblicazione per leggere tutti i dettagli.";
- const isLong = full.length > PREVIEW_CHARS;
  const body = h("div", {class: "summary"});
- renderRich(body, (isLong && !expanded[ik]) ? previewOf(full) : full);
+ renderRich(body, previewOf(full));
  article.append(top, title);
  const lb = labelsEl(item); if (lb) article.append(lb);
  if (item.summary) article.append(summaryBox(item));
  const sn = snippetEl(item, tokens()); if (sn) article.append(sn);
- if (!sn || expanded[ik]) article.append(body);
- if (item.truncated) article.append(warnEl());
+ if (!sn && !item.summary) article.append(body);   // con il riassunto basta quello: il testo completo si legge con «Leggi»
  const actions = h("div", {class: "actions"});
- if (isLong && !sn) actions.append(mkBtn(expanded[ik] ? "▴ Riduci" : "▾ Mostra tutto", () => { expanded[ik] = !expanded[ik]; render(); }));
- actions.append(mkBtn("⛶ Schermo intero", () => openViewer(list, idx)));
- actions.append(mkBtn(tr ? "↩ Mostra originale" : "🌐 Traduci in italiano", b => toggleTranslate(item, b)));
- actions.append(mkBtn(isSaved(key, item) ? "★ Salvata" : "☆ Salva", () => toggleSaved(key, item), isSaved(key, item) ? "on" : ""));
- actions.append(mkBtn("↗ Condividi", () => shareItem(item, game.name)));
- actions.append(h("a", {class: "more", href: safeUrl(item.url, game.store), target: "_blank", rel: "noopener noreferrer"}, "Apri su Steam ↗"));
+ const sv = isSaved(key, item);
+ actions.append(mkBtn("Leggi", () => openViewer(list, idx), "pri"));
+ actions.append(mkBtn(tr ? "↩ Originale" : "🌐 Traduci", b => toggleTranslate(item, b)));
+ actions.append(iconBtn(sv ? "★" : "☆", sv ? "Togli dai salvati" : "Salva", () => toggleSaved(key, item), sv));
+ actions.append(iconBtn("↗", "Condividi", () => shareItem(item, game.name)));
  article.append(actions);
  return article;
 }
@@ -1027,8 +1205,10 @@ function renderFilters() {
  const chip = (label, on, fn) => { const b = h("button", {type: "button", class: "fchip" + (on ? " on" : ""), "aria-pressed": on ? "true" : "false"}, label); b.addEventListener("click", fn); box.append(b); };
  chip("🔍 Cerca", searchOpen || !!query, toggleSearch);
  chip("★ Salvati" + (saved.length ? " · " + saved.length : ""), savedView, () => { savedView = !savedView; showLimit = PAGE; render(); });
- chip("Solo patch", onlyPatch, () => setOnlyPatch(!onlyPatch));
- for (const l of Object.keys(LABEL_TXT)) chip(LABEL_TXT[l], labelFilter.has(l), () => { labelFilter.has(l) ? labelFilter.delete(l) : labelFilter.add(l); showLimit = PAGE; render(); });
+ if (!isHome()) {   // nella schermata principale servono solo ricerca e salvati
+  chip("Solo patch", onlyPatch, () => setOnlyPatch(!onlyPatch));
+  for (const l of Object.keys(LABEL_TXT)) chip(LABEL_TXT[l], labelFilter.has(l), () => { labelFilter.has(l) ? labelFilter.delete(l) : labelFilter.add(l); showLimit = PAGE; render(); });
+ }
  box.scrollLeft = sl;
  $("searchbar").hidden = !(searchOpen || query);
 }
@@ -1042,7 +1222,7 @@ function toggleSearch() {
 /* Giocatori online: li legge il server (GitHub Action) e li pubblica in data/players.json; l'app non interroga più Steam attraverso proxy di terzi */
 function renderMeta() {
  const el = $("meta"); el.innerHTML = "";
- if (crossGame() || !GAMES[selected]) return;
+ if (home || crossGame() || !GAMES[selected]) return;
  const g = GAMES[selected], p = g.price;
  if (p && p.final) {
   const sale = p.discount > 0;
@@ -1076,12 +1256,13 @@ function renderStale() {
 }
 
 function render() {
- const cross = crossGame(), game = GAMES[selected];
- const all = baseEntries();
- if (!cross && cache[selected]) viewed[selected] = true;
+ const cross = crossGame(), onHome = isHome(), game = GAMES[selected];
+ const all = onHome ? [] : baseEntries();
+ if (!onHome && !cross && cache[selected]) viewed[selected] = true;
  renderNav(); renderBanner(); renderStale(); renderMeta(); renderFilters(); updateTitle();
- $("gameTitle").textContent = savedView ? "★ Salvati" : query.trim() ? "Ricerca" : game.name;
- const box = $("cards"); box.innerHTML = "";
+ $("gameTitle").textContent = savedView ? "★ Salvati" : query.trim() ? "Ricerca" : onHome ? "Ultime patch" : game.name;
+ const box = $("cards"); box.innerHTML = ""; box.classList.toggle("home", onHome);
+ if (onHome) { renderHome(box); return; }
  if (!cross && !cache[selected]) { $("count").textContent = "In attesa dei dati"; return; }
  const list = visibleEntries(), n = list.length;
  $("count").textContent = (n !== all.length && !query.trim() ? n + " di " + all.length : n) + (n === 1 ? " pubblicazione" : " pubblicazioni") + (query.trim() ? " con «" + query.trim() + "»" : "");
@@ -1121,12 +1302,16 @@ async function doRefresh(manual) {
  ensureSelected();
  const [errors] = await Promise.all([Promise.all(visibleKeys().map(loadGame)), loadCheck()]);
  baselineSeen();
- const failedSelected = errors[visibleKeys().indexOf(selected)];
+ const onHome = isHome();   // nella schermata principale conta solo se nessun gioco si è caricato
+ const failedSelected = onHome ? (errors.length && errors.every(Boolean) ? errors[0] : null) : errors[visibleKeys().indexOf(selected)];
+ const haveData = onHome ? visibleKeys().some(k => cache[k]) : !!cache[selected];
  if (!failedSelected) {
   lastRefresh = Date.now(); save();
   setStatus("Ultimo controllo: " + new Date().toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"}) + " · fonte: Steam via GitHub" + (lastCheck ? " · controllo automatico alle " + new Date(lastCheck).toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"}) : ""), "ok");
- } else if (cache[selected]) {
+ } else if (haveData) {
   setStatus("Aggiornamento non riuscito: mostro gli ultimi dati salvati. Premi «Aggiorna» per riprovare. (" + failedSelected.message + ")", "error");
+ } else if (onHome) {
+  setStatus("Dati non disponibili. Premi «Aggiorna» per riprovare. (" + failedSelected.message + ")", "error");
  } else {
   const g = GAMES[selected];
   setStatus("Dati non disponibili. Premi «Aggiorna» per riprovare. (" + failedSelected.message + ")", "error");
@@ -1136,13 +1321,13 @@ async function doRefresh(manual) {
  }
  if (!autoPicked) {
   autoPicked = true;
-  if (!newItems(selected).length) { const k = visibleKeys().find(x => newItems(x).length); if (k) selected = k; }
+  if (home && !newItems(selected).length) { const k = visibleKeys().find(x => newItems(x).length); if (k) selected = k; }
  }
  const tot = totalNew();
  if (lastTotal !== null && tot > lastTotal) toast("🔔 " + plural(tot - lastTotal) + "!");
  lastTotal = tot;
  if (firstRun && !failedSelected) { setStatus("Prima apertura: da ora ti segnalo i nuovi aggiornamenti dei tuoi giochi.", "ok"); firstRun = false; }
- if (cache[selected]) refreshViews();
+ if (cache[selected] || isHome()) refreshViews();
 }
 
 $("refreshBtn").addEventListener("click", () => refreshAll(true));
@@ -1432,7 +1617,7 @@ applyTheme(currentTheme());
  });
 })();
 fetch("config.json", {cache: "no-store"}).then(r => r.ok ? r.json() : null).then(c => {
- if (c) { CFG = c; setTopicLink(); }
+ if (c) { CFG = c; setTopicLink(); renderAdmin(); }
 }).catch(() => {});
 
 /* ---------- Installazione come app (PWA) ---------- */
@@ -1461,6 +1646,7 @@ loadHidden();
 loadPending();
 loadPatchPref();
 loadAdmin();
+loadBridge();
 loadNotif();
 ensureSelected();
 if (cache[selected]) setStatus("Dati salvati · aggiornamento in corso…");
