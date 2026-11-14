@@ -439,6 +439,24 @@ def is_major(item):
     return bool(MAJOR_TITLE_RE.search(title)) and not re.search(r"hotfix|hot fix", title, re.I)
 
 
+# Avvisi per parola chiave: gruppi fissi (l'app si iscrive a un argomento per gioco e per gruppo, quindi l'elenco deve essere
+# lo stesso lato app: vedi KW_GROUPS in index.html). id -> (nome mostrato, espressione cercata nel titolo e nel testo)
+KEYWORD_GROUPS = {
+    "coop": ("Co-op e multiplayer", re.compile(r"\bco-?op\b|\bmulti-?player\b|\bdedicated servers?\b|\bsplit-?screen\b|\bcross-?play\b|\bcross-?platform\b", re.I)),
+    "crash": ("Crash e blocchi", re.compile(r"\bcrash(?:es|ed|ing)?\b|\bfreez(?:e|es|ing)\b|\bsoft-?lock\w*|\bcorrupt\w*|\bstuck\b", re.I)),
+    "controller": ("Controller e Steam Deck", re.compile(r"\bcontrollers?\b|\bgamepads?\b|\bsteam deck\b|\bdualsense\b|\bdualshock\b|\brebind\w*", re.I)),
+    "mod": ("Mod e Workshop", re.compile(r"\bmods?\b|\bmodding\b|\bworkshop\b", re.I)),
+    "perf": ("Prestazioni", re.compile(r"\bperformance\b|\boptimi[sz]\w*|\bfps\b|\bframe ?rate\b|\bstutter\w*|\bmemory leak", re.I)),
+    "lang": ("Lingua italiana", re.compile(r"\bitalian\b|\bitaliano\b|\blocali[sz]ation\b|\btranslations?\b", re.I)),
+}
+
+
+def keywords_of(item):
+    """Gruppi di parole chiave presenti nel titolo o nel testo di una patch (nell'ordine di KEYWORD_GROUPS)."""
+    text = (item.get("title") or "") + "\n" + " ".join(structured_lines(item.get("contents")))
+    return [gid for gid, (_, rx) in KEYWORD_GROUPS.items() if rx.search(text)]
+
+
 def merge_history(items, old_items):
     """Aggiunge agli annunci appena scaricati quelli vecchi che Steam non restituisce più."""
     have = {str(i.get("gid")) for i in items}
@@ -626,6 +644,11 @@ def notify(name, item, appid, watch=False):
             topics.append(f"{NTFY_TOPIC}-{appid}-major")
         if topics:
             enqueue(topics, f"{name}: nuovo aggiornamento", body, ["video_game"])
+        # Avvisi per parola chiave: solo per le patch NON grosse (quelle grosse arrivano già a chi segue «solo grosse», che è
+        # l'unico che si iscrive a questi argomenti: così non c'è mai una notifica doppia). I giochi osservati restano solo-grosse.
+        if not watch and not is_major(item):
+            for gid in keywords_of(item):
+                enqueue([f"{NTFY_TOPIC}-{appid}-kw-{gid}"], f"{name}: patch con «{KEYWORD_GROUPS[gid][0]}»", body, ["mag"])
     elif not watch:
         enqueue([f"{NTFY_TOPIC}-{appid}-news"], f"{name}: novità", body, ["loudspeaker"])
 
