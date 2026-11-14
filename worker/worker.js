@@ -9,7 +9,8 @@
      REPO            (var)     es. condor85/patch-radar
      ALLOWED_ORIGIN  (var)     es. https://condor85.github.io   (solo origine, senza percorso)
      RL              (KV, facoltativo) tiene il conto dei tentativi di accesso sbagliati
-     TEAM            (Durable Object, dichiarato in wrangler.toml) archivio privato della squadra: «Ci gioco» / «Mi interessa» */
+     TEAM            (Durable Object, dichiarato in wrangler.toml) archivio privato della squadra: «Ci gioco» / «Mi interessa».
+                     Stessa classe, istanze diverse: un archivio per ogni codice di sincronizzazione personale («letto» e «salvati») */
 
 const MAX_GAMES = 40;           // tetto ai giochi: protegge la durata del controllo orario
 const MAX_BODY = 2048;          // byte accettati in una richiesta
@@ -169,9 +170,9 @@ async function steamGame(appid) {
 }
 
 /* ---------- Azioni ---------- */
-async function readBody(request) {
+async function readBody(request, max = MAX_BODY) {
   const text = await request.text();
-  if (text.length > MAX_BODY) throw new HttpError(413, "Richiesta troppo grande.");
+  if (text.length > max) throw new HttpError(413, "Richiesta troppo grande.");
   if (!text) return {};
   try { const o = JSON.parse(text); return o && typeof o === "object" && !Array.isArray(o) ? o : {}; }
   catch { throw new HttpError(400, "Richiesta non valida."); }
@@ -287,6 +288,85 @@ function newCode() {
   const a = new Uint8Array(12); crypto.getRandomValues(a);
   return [...a].map(b => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
 }
+
+/* ---------- Sincronizzazione personale: «letto» e «salvati» su più dispositivi ----------
+   Ogni persona ha un proprio codice (12 caratteri casuali, come quello della squadra). Il codice non è mai salvato: l'archivio
+   si trova solo tramite il suo hash (un Durable Object a parte per ogni codice), quindi chi non conosce il codice non può né
+   leggere né scrivere. I dati sono solo identificativi di patch e le patch salvate (titolo, link, riassunto): niente dati personali.
+   Chi non usa un codice non è toccato: l'app continua a tenere tutto nel browser. */
+const SYNC_MAX_BODY = 300000;            // caratteri accettati in una richiesta di sincronizzazione
+const SYNC_MAX_GAMES = 100;              // giochi con patch lette
+const SYNC_MAX_SEEN = 80;                // patch lette ricordate per gioco (come nell'app)
+const SYNC_MAX_SAVED = 200;              // patch salvate (come nell'app)
+const SYNC_MAX_REMOVED = 300;            // «cancellazioni» ricordate, per non far tornare patch tolte da un altro dispositivo
+const SYNC_REMOVED_TTL = 90 * 86400000;
+const SYNC_TTL = 180 * 86400000;         // un archivio non usato per 6 mesi viene cancellato da solo
+const SYNC_LIMITS = {syncfails: [10, 900000], synccreate: [5, 3600000]};   // tentativi sbagliati (15 min) e codici creati per indirizzo (1 ora)
+const GID_RE = /^[A-Za-z0-9_-]{1,40}$/;
+const SYNC_KEYS = ["syncmeta", "seen", "saved", "removed"];
+
+function cleanSyncSeen(v) {
+  const out = {};
+  if (!v || typeof v !== "object" || Array.isArray(v)) return out;
+  for (const [k, list] of Object.entries(v)) {
+    if (!/^\d{1,9}$/.test(k) || !Array.isArray(list)) continue;
+    if (Object.keys(out).length >= SYNC_MAX_GAMES) break;
+    out[k] = [...new Set(list.filter(g => typeof g === "string" && GID_RE.test(g)))].slice(0, SYNC_MAX_SEEN);
+  }
+  return out;
+}
+function cleanSyncSaved(v, now) {
+  const out = [];
+  if (!Array.isArray(v)) return out;
+  for (const x of v) {
+    if (!x || typeof x !== "object") continue;
+    const appid = String(x.appid == null ? "" : x.appid), gid = String(x.gid == null ? "" : x.gid);
+    if (!/^\d{1,9}$/.test(appid) || !GID_RE.test(gid) || x.id !== appid + ":" + gid) continue;
+    const ts = Number(x.ts), date = Number(x.date);
+    out.push({
+      id: x.id, appid, gid, title: cleanText(x.title, 200),
+      date: Number.isFinite(date) && date >= 0 ? Math.round(date) : 0,
+      url: typeof x.url === "string" && /^https?:\/\/[^\s<>"]{1,480}$/.test(x.url) ? x.url : "",
+      summary: cleanText(x.summary, 300),
+      ts: Number.isFinite(ts) && ts > 0 && ts <= now + 86400000 ? Math.round(ts) : now
+    });
+    if (out.length >= SYNC_MAX_SAVED) break;
+  }
+  return out;
+}
+function cleanSyncRemoved(v, now) {
+  const out = {};
+  if (!v || typeof v !== "object" || Array.isArray(v)) return out;
+  for (const [id, t] of Object.entries(v)) {
+    const m = /^(\d{1,9}):([A-Za-z0-9_-]{1,40})$/.exec(id), ts = Number(t);
+    if (m && Number.isFinite(ts) && ts > 0 && ts <= now + 86400000 && Object.keys(out).length < SYNC_MAX_REMOVED) out[id] = Math.round(ts);
+  }
+  return out;
+}
+
+/* Unisce lo stato di un dispositivo con quello del ponte. «Letto» si unisce soltanto (una patch letta resta letta);
+   per i salvati vince l'azione più recente: salvare dopo aver tolto la rimette, togliere dopo aver salvato la toglie. */
+function mergeSync(server, client, now) {
+  const seen = {};
+  for (const k of new Set([...Object.keys(client.seen), ...Object.keys(server.seen)])) {
+    if (Object.keys(seen).length >= SYNC_MAX_GAMES) break;
+    seen[k] = [...new Set([...(client.seen[k] || []), ...(server.seen[k] || [])])].slice(0, SYNC_MAX_SEEN);
+  }
+  const map = new Map(server.saved.map(x => [x.id, x]));
+  const removed = {...server.removed};
+  for (const [id, t] of Object.entries(client.removed)) if (t > (removed[id] || 0)) removed[id] = t;
+  for (const x of client.saved) { const cur = map.get(x.id); if (!cur || x.ts > cur.ts) map.set(x.id, x); }
+  for (const id of Object.keys(removed)) {
+    const cur = map.get(id);
+    if (cur) { if (removed[id] >= cur.ts) map.delete(id); else delete removed[id]; }
+  }
+  const keep = Object.entries(removed).filter(([, t]) => now - t < SYNC_REMOVED_TTL).sort((a, b) => b[1] - a[1]).slice(0, SYNC_MAX_REMOVED);
+  return {
+    seen,
+    saved: [...map.values()].sort((a, b) => b.ts - a.ts).slice(0, SYNC_MAX_SAVED),
+    removed: Object.fromEntries(keep)
+  };
+}
 const showCode = c => c.match(/.{1,4}/g).join("-");
 async function sha(text) {
   return [...new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(text)))].map(b => b.toString(16).padStart(2, "0")).join("");
@@ -327,6 +407,21 @@ export class Team {
     return {blocked: fails[ip].n >= limit};
   }
 
+  /* Ricorda l'ultimo uso e rimanda la cancellazione automatica di 6 mesi (se l'ambiente supporta gli allarmi) */
+  async syncTouch(now) {
+    const st = this.state.storage, meta = (await st.get("syncmeta")) || {created: now};
+    await st.put("syncmeta", {created: meta.created, last: now});
+    if (typeof st.setAlarm === "function") { try { await st.setAlarm(now + SYNC_TTL); } catch {} }
+  }
+
+  /* Scatta solo se per 6 mesi nessuno ha usato questo archivio personale: lo cancella */
+  async alarm() {
+    const st = this.state.storage, meta = await st.get("syncmeta");
+    if (!meta) return;
+    if (Date.now() - (meta.last || meta.created || 0) >= SYNC_TTL) for (const k of SYNC_KEYS) await st.delete(k);
+    else if (typeof st.setAlarm === "function") await st.setAlarm((meta.last || meta.created) + SYNC_TTL);
+  }
+
   async snapshot() {
     const members = (await this.state.storage.get("members")) || {};
     const votes = (await this.state.storage.get("votes")) || {};
@@ -357,6 +452,25 @@ export class Team {
     }
     if (m.op === "rl") {   // limitatore delle password dell'amministratore: chiamato solo dal ponte
       return {ok: true, ...(await this.counter("adminfails", String(m.ip), m.action, FAIL_LIMIT, FAIL_WINDOW * 1000))};
+    }
+    if (m.op === "rlsync") {   // limitatori della sincronizzazione (codici sbagliati, codici creati): chiamato solo dal ponte
+      if (typeof m.key !== "string" || !Object.hasOwn(SYNC_LIMITS, m.key)) throw new HttpError(400, "Richiesta non valida.");
+      return {ok: true, ...(await this.counter(m.key, String(m.ip), m.action, SYNC_LIMITS[m.key][0], SYNC_LIMITS[m.key][1]))};
+    }
+    if (m.op === "sync_init") {   // archivio personale: creato solo dal ponte, subito dopo aver generato un codice
+      if (!(await st.get("syncmeta"))) await this.syncTouch(Date.now());
+      return {ok: true};
+    }
+    if (m.op === "sync" || m.op === "sync_forget") {   // archivio personale: l'accesso è già stato deciso dal ponte (il nome dell'archivio deriva dal codice)
+      if (!(await st.get("syncmeta"))) throw new HttpError(404, "Codice di sincronizzazione non trovato: potrebbe essere stato eliminato o scritto male.");
+      if (m.op === "sync_forget") { for (const k of SYNC_KEYS) await st.delete(k); return {ok: true}; }
+      const now = Date.now(), d = m.data && typeof m.data === "object" ? m.data : {};
+      const client = {seen: cleanSyncSeen(d.seen), saved: cleanSyncSaved(d.saved, now), removed: cleanSyncRemoved(d.removed, now)};
+      const server = {seen: (await st.get("seen")) || {}, saved: (await st.get("saved")) || [], removed: (await st.get("removed")) || {}};
+      const out = mergeSync(server, client, now);
+      await st.put("seen", out.seen); await st.put("saved", out.saved); await st.put("removed", out.removed);
+      await this.syncTouch(now);
+      return {ok: true, ...out, time: now};
     }
     const meta = await st.get("meta");
     if (!meta) throw new HttpError(404, "La squadra non è ancora stata creata: chiedi all'amministratore di creare il codice.");
@@ -460,6 +574,36 @@ async function teamCall(env, op, request, body) {
 }
 const TEAM_OPS = {"/team/state": "state", "/team/join": "join", "/team/vote": "vote", "/team/session": "session", "/team/note": "note"};
 
+/* Sincronizzazione personale. Il codice sta nell'intestazione Authorization; l'archivio di ogni codice è un Durable Object a parte,
+   il cui nome è l'hash del codice. Un indirizzo che sbaglia 10 volte in 15 minuti viene bloccato (i successi NON azzerano il conto,
+   altrimenti chi ha un codice valido potrebbe usarlo per azzerare i tentativi mentre ne indovina altri). Ogni indirizzo può creare
+   al massimo 5 codici all'ora. */
+const SYNC_OPS = {"/sync/new": "new", "/sync/sync": "sync", "/sync/forget": "forget"};
+async function syncRl(env, key, ip, action) {
+  const r = await env.TEAM.get(env.TEAM.idFromName("squadra")).fetch("https://squadra.internal/rlsync", {method: "POST", body: JSON.stringify({op: "rlsync", key, ip, action})});
+  if (!r.ok) throw new HttpError(500, "Errore del servizio. Riprova.");
+  return !!(await r.json()).blocked;
+}
+async function syncCall(env, op, request, body) {
+  if (!env.TEAM) throw new HttpError(503, "La sincronizzazione non è attiva sul ponte: serve ripubblicare il ponte.");
+  const ip = ipOf(request), personal = async code => env.TEAM.get(env.TEAM.idFromName("sync:" + await sha(code)));
+  if (op === "new") {
+    if (await syncRl(env, "synccreate", ip, "check")) throw new HttpError(429, "Hai creato troppi codici da poco. Riprova più tardi.");
+    const code = newCode();
+    const r = await (await personal(code)).fetch("https://sync.internal/init", {method: "POST", body: JSON.stringify({op: "sync_init"})});
+    if (!r.ok) throw new HttpError(500, "Errore del servizio. Riprova.");
+    await syncRl(env, "synccreate", ip, "fail");   // «fail» = un'unità di conto: qui conta i codici creati
+    return {status: 200, body: {ok: true, code: showCode(code)}};
+  }
+  if (await syncRl(env, "syncfails", ip, "check")) throw new HttpError(429, "Troppi tentativi sbagliati. Riprova tra qualche minuto.");
+  const m = /^Bearer (.{1,200})$/.exec(request.headers.get("Authorization") || ""), code = normCode(m ? m[1] : "");
+  if (code.length !== 12) { await syncRl(env, "syncfails", ip, "fail"); throw new HttpError(401, "Codice di sincronizzazione non valido."); }
+  const r = await (await personal(code)).fetch("https://sync.internal/" + op, {method: "POST", body: JSON.stringify({op: op === "forget" ? "sync_forget" : "sync", data: body})});
+  let d = {}; try { d = await r.json(); } catch {}
+  if (r.status === 404) await syncRl(env, "syncfails", ip, "fail");
+  return {status: r.status, body: d};
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
@@ -477,6 +621,11 @@ export default {
           return json(env, origin, r.status, await r.json());
         }
         const r = await teamCall(env, TEAM_OPS[path], request, body);
+        return json(env, origin, r.status, r.body);
+      }
+      if (Object.prototype.hasOwnProperty.call(SYNC_OPS, path)) {
+        if (request.method !== "POST") throw new HttpError(405, "Metodo non consentito.");
+        const r = await syncCall(env, SYNC_OPS[path], request, await readBody(request, SYNC_MAX_BODY));
         return json(env, origin, r.status, r.body);
       }
       const action = Object.prototype.hasOwnProperty.call(ACTIONS, path) ? ACTIONS[path] : null;

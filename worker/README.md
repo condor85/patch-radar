@@ -64,5 +64,13 @@ Il ponte tiene anche l'archivio privato della squadra (un Durable Object chiamat
 L'amministratore crea il codice con `/team/setup`; gli amici entrano con `/team/join` e votano con `/team/vote` (il codice sta nell'intestazione `Authorization`). Con `/team/session` e `/team/note` gestisce anche le sessioni di gioco (massimo 40) e le note sulle patch (massimo 20 per patch, 200 in tutto, 280 caratteri). Dopo 8 codici sbagliati l'indirizzo viene bloccato per 15 minuti.
 Se il ponte è stato creato a mano dal pannello Cloudflare, per questa funzione va ripubblicato con il metodo automatico (o `npx wrangler deploy`).
 
+## Sincronizzazione personale («letto» e «salvati»)
+Con la stessa classe `Team` il ponte tiene un archivio privato **per ogni codice personale**: nessuna nuova installazione, nessuna migrazione, nessun costo sul piano gratuito.
+- `/sync/new` crea un codice (12 caratteri casuali) e non richiede la password: al massimo 5 codici all'ora per indirizzo.
+- `/sync/sync` (il codice sta nell'intestazione `Authorization`) riceve «letto», salvati e cancellazioni di un dispositivo, li unisce con quelli del ponte e restituisce il risultato. Il «letto» si unisce soltanto; per i salvati vince l'azione più recente. Dati ripuliti e con tetti: 100 giochi, 80 patch lette per gioco, 200 salvati, 300 cancellazioni, richiesta massima 300 000 caratteri.
+- `/sync/forget` cancella l'archivio.
+- Il codice non viene salvato: l'archivio si chiama come il suo hash. Dopo 10 codici sbagliati in 15 minuti l'indirizzo viene bloccato; un codice giusto non azzera il conto. Un archivio non usato per 6 mesi si cancella da solo.
+- Come per la squadra, se il ponte è stato creato a mano dal pannello Cloudflare va ripubblicato con il metodo automatico (o `npx wrangler deploy`).
+
 ## Test
-`node tests/worker.test.mjs`
+`node tests/worker.test.mjs` (ponte) e `node tests/sync-client.test.mjs` (sincronizzazione lato app contro il ponte)

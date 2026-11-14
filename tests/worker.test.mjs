@@ -292,14 +292,17 @@ test("/status richiede la password", async () => {
 
 /* ---------- Squadra ---------- */
 class MockStorage {
-  constructor() { this.m = new Map(); }
+  constructor() { this.m = new Map(); this.alarm = null; }
   async get(k) { return this.m.has(k) ? structuredClone(this.m.get(k)) : undefined; }
   async put(k, v) { this.m.set(k, structuredClone(v)); }
   async delete(k) { this.m.delete(k); }
+  async setAlarm(t) { this.alarm = t; }
 }
+/* Come su Cloudflare: ogni nome ha il suo archivio (la squadra è «squadra», ogni codice di sincronizzazione ha il suo). */
 const teamEnv = (extra = {}) => {
-  const team = new Team({storage: new MockStorage()});
-  return makeEnv({TEAM: {idFromName: n => n, get: () => ({fetch: (url, init) => team.fetch(new Request(url, init))})}, ...extra});
+  const teams = new Map();
+  const obj = name => { if (!teams.has(name)) teams.set(name, new Team({storage: new MockStorage()})); return teams.get(name); };
+  return makeEnv({_teams: teams, TEAM: {idFromName: n => n, get: name => ({fetch: (url, init) => obj(name).fetch(new Request(url, init))})}, ...extra});
 };
 const asTeam = (code, ip = "5.5.5.5") => ({auth: "Bearer " + code, ip});
 const setup = async env => (await call(env, "/team/setup", {})).body.code;
@@ -467,6 +470,126 @@ test("note e sessioni richiedono il codice", async () => {
   mockNet(); const env = teamEnv(); await joined(env, "Anna");
   assert.equal((await call(env, "/team/note", {name: "Anna", action: "add", gid: "a", text: "ciao ciao"}, asTeam("sbagliato", "8.8.8.8"))).status, 401);
   assert.equal((await call(env, "/team/session", {name: "Anna", action: "add", appid: 7, ts: inDays(1)}, asTeam("sbagliato", "8.8.8.8"))).status, 401);
+});
+
+
+/* ---------- Sincronizzazione personale ---------- */
+const newSync = async (env, ip = "5.5.5.5") => (await call(env, "/sync/new", {}, {auth: null, ip})).body.code;
+const item = (appid, gid, ts, extra = {}) => ({id: appid + ":" + gid, appid: String(appid), gid, title: "Patch " + gid, date: 1700000000, url: "https://store.steampowered.com/news/app/" + appid, summary: "Riassunto", ts, ...extra});
+
+test("sync: un codice nuovo si crea senza password, ha 12 caratteri e parte vuoto", async () => {
+  mockNet(); const env = teamEnv();
+  const r = await call(env, "/sync/new", {}, {auth: null});
+  assert.equal(r.status, 200); assert.match(r.body.code, /^[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$/);
+  const s = await call(env, "/sync/sync", {}, asTeam(r.body.code));
+  assert.equal(s.status, 200); assert.deepEqual([s.body.seen, s.body.saved, s.body.removed], [{}, [], {}]);
+  assert.equal((await call(env, "/sync/sync", {}, asTeam(r.body.code.toUpperCase().replaceAll("-", " ")))).status, 200);   // maiuscole e spazi non contano
+});
+
+test("sync: due dispositivi si scambiano «letto» e «salvati» (unione)", async () => {
+  mockNet(); const env = teamEnv(); const code = await newSync(env);
+  const t0 = Date.now() - 5000;
+  await call(env, "/sync/sync", {seen: {"5": ["a", "b"]}, saved: [item(5, "a", t0)]}, asTeam(code));
+  const b = await call(env, "/sync/sync", {seen: {"5": ["c"], "7": ["z"]}, saved: [item(7, "z", t0 + 1000)]}, asTeam(code));
+  assert.deepEqual(b.body.seen["5"].sort(), ["a", "b", "c"]); assert.deepEqual(b.body.seen["7"], ["z"]);
+  assert.deepEqual(b.body.saved.map(x => x.id), ["7:z", "5:a"]);   // la più recente per prima
+  const a = await call(env, "/sync/sync", {seen: {"5": ["a", "b"]}, saved: [item(5, "a", t0)]}, asTeam(code));
+  assert.deepEqual(a.body.saved.map(x => x.id), ["7:z", "5:a"]); assert.deepEqual(a.body.seen["5"].sort(), ["a", "b", "c"]);
+});
+
+test("sync: togliere un salvato su un dispositivo lo toglie anche negli altri; salvare di nuovo dopo lo rimette", async () => {
+  mockNet(); const env = teamEnv(); const code = await newSync(env);
+  const t0 = Date.now() - 60000;
+  await call(env, "/sync/sync", {saved: [item(5, "a", t0), item(5, "b", t0)]}, asTeam(code));
+  const rm = await call(env, "/sync/sync", {saved: [item(5, "b", t0)], removed: {"5:a": t0 + 1000}}, asTeam(code));
+  assert.deepEqual(rm.body.saved.map(x => x.id), ["5:b"]);
+  // un dispositivo rimasto indietro rimanda il vecchio salvataggio: la cancellazione vince
+  assert.deepEqual((await call(env, "/sync/sync", {saved: [item(5, "a", t0), item(5, "b", t0)]}, asTeam(code))).body.saved.map(x => x.id), ["5:b"]);
+  // salvato di nuovo più tardi: torna
+  const back = await call(env, "/sync/sync", {saved: [item(5, "a", t0 + 5000)]}, asTeam(code));
+  assert.deepEqual(back.body.saved.map(x => x.id), ["5:a", "5:b"]); assert.deepEqual(back.body.removed, {});
+});
+
+test("sync: ogni codice ha i suoi dati, quelli degli altri non si vedono", async () => {
+  mockNet(); const env = teamEnv(); const c1 = await newSync(env), c2 = await newSync(env, "6.6.6.6");
+  assert.notEqual(c1, c2);
+  await call(env, "/sync/sync", {seen: {"5": ["a"]}, saved: [item(5, "a", Date.now())]}, asTeam(c1));
+  const r = await call(env, "/sync/sync", {}, asTeam(c2));
+  assert.deepEqual([r.body.seen, r.body.saved], [{}, []]);
+});
+
+test("sync: codice mal scritto → 401, ben scritto ma inesistente → 404; la squadra non è un codice di sincronizzazione", async () => {
+  mockNet(); const env = teamEnv(); const team = await setup(env);
+  assert.equal((await call(env, "/sync/sync", {}, asTeam("abc"))).status, 401);
+  assert.equal((await call(env, "/sync/sync", {}, {auth: null})).status, 401);
+  assert.equal((await call(env, "/sync/sync", {}, asTeam("abcd-efgh-jkmn"))).status, 404);
+  assert.equal((await call(env, "/sync/sync", {}, asTeam(team))).status, 404);
+  assert.equal((await call(env, "/sync/forget", {}, asTeam("abcd-efgh-jkmn"))).status, 404);
+});
+
+test("sync: dopo 10 codici sbagliati l'indirizzo è bloccato; un codice giusto non azzera il conto; altri indirizzi liberi", async () => {
+  mockNet(); const env = teamEnv(); const code = await newSync(env, "1.1.1.1");
+  for (let i = 0; i < 9; i++) assert.equal((await call(env, "/sync/sync", {}, asTeam("zzzz-zzzz-zzz" + (i % 10), "8.8.4.4"))).status, 404);
+  assert.equal((await call(env, "/sync/sync", {}, asTeam(code, "8.8.4.4"))).status, 200);   // usare un codice valido...
+  assert.equal((await call(env, "/sync/sync", {}, asTeam("zzzz-zzzz-zzzz", "8.8.4.4"))).status, 404);   // ...non ha fatto ripartire il conto (decimo errore)
+  assert.equal((await call(env, "/sync/sync", {}, asTeam(code, "8.8.4.4"))).status, 429);
+  assert.equal((await call(env, "/sync/sync", {}, asTeam(code, "9.9.9.9"))).status, 200);
+});
+
+test("sync: al massimo 5 codici all'ora per indirizzo", async () => {
+  mockNet(); const env = teamEnv();
+  for (let i = 0; i < 5; i++) assert.equal((await call(env, "/sync/new", {}, {auth: null, ip: "3.3.3.3"})).status, 200);
+  assert.equal((await call(env, "/sync/new", {}, {auth: null, ip: "3.3.3.3"})).status, 429);
+  assert.equal((await call(env, "/sync/new", {}, {auth: null, ip: "3.3.3.4"})).status, 200);
+});
+
+test("sync: i dati dei dispositivi vengono ripuliti e limitati", async () => {
+  mockNet(); const env = teamEnv(); const code = await newSync(env); const now = Date.now();
+  const many = {}; for (let i = 1; i <= 120; i++) many[String(i)] = ["g1"];
+  const saved = [
+    item(5, "ok", now, {title: "  <b>Titolo</b>\n lungo " + "x".repeat(400), summary: "y".repeat(900), url: "javascript:alert(1)"}),
+    item(5, "bad", now, {id: "5:altro"}), item(6, "bad id!", now), {appid: "abc", gid: "x", id: "abc:x", ts: now}, null, "testo", 42
+  ];
+  for (let i = 0; i < 250; i++) saved.push(item(9, "s" + i, now - i - 1));
+  const r = await call(env, "/sync/sync", {seen: {...many, "x": ["a"], "7": ["buono", "non valido!", "buono", 5], "8": "no", "__proto__": ["a"]}, saved, removed: {"1:a": now, "mm": now, "2:b": "no", "3:c": now + 10 * 86400000}}, asTeam(code));
+  assert.equal(r.status, 200);
+  assert.equal(Object.keys(r.body.seen).length, 100); assert.ok(!("x" in r.body.seen)); assert.deepEqual(r.body.seen["7"], ["buono"]);
+  assert.equal(r.body.saved.length, 200);
+  const ok = r.body.saved.find(x => x.id === "5:ok");
+  assert.equal(ok.url, ""); assert.equal(ok.summary.length, 300); assert.ok(ok.title.length <= 200 && !/[<>]/.test(ok.title));
+  assert.ok(!r.body.saved.some(x => x.id === "5:altro" || x.appid === "abc"));
+  assert.deepEqual(Object.keys(r.body.removed), ["1:a"]);
+  assert.equal(Object.prototype.hasOwnProperty.call(r.body.seen, "__proto__"), false);
+});
+
+test("sync: richieste troppo grandi, metodo GET e origine sbagliata", async () => {
+  mockNet(); const env = teamEnv(); const code = await newSync(env);
+  assert.equal((await call(env, "/sync/sync", {junk: "x".repeat(310000)}, asTeam(code))).status, 413);
+  assert.equal((await call(env, "/sync/sync", {}, {...asTeam(code), method: "GET"})).status, 405);
+  assert.equal((await call(env, "/sync/new", {}, {auth: null, origin: "https://evil.example"})).status, 403);
+  assert.equal((await call(env, "/sync/sync", {}, {...asTeam(code), origin: "https://evil.example"})).status, 403);
+});
+
+test("sync: «elimina i miei dati» cancella tutto e il codice smette di funzionare", async () => {
+  mockNet(); const env = teamEnv(); const code = await newSync(env);
+  await call(env, "/sync/sync", {seen: {"5": ["a"]}, saved: [item(5, "a", Date.now())]}, asTeam(code));
+  assert.equal((await call(env, "/sync/forget", {}, asTeam(code))).status, 200);
+  assert.equal((await call(env, "/sync/sync", {}, asTeam(code))).status, 404);
+});
+
+test("sync: senza l'archivio TEAM → 503; l'archivio non usato per 6 mesi si cancella da solo", async () => {
+  mockNet();
+  assert.equal((await call(makeEnv(), "/sync/new", {}, {auth: null})).status, 503);
+  const env = teamEnv(); const code = await newSync(env);
+  await call(env, "/sync/sync", {seen: {"5": ["a"]}}, asTeam(code));
+  const [, team] = [...env._teams].find(([k]) => k.startsWith("sync:"));
+  const st = team.state.storage;
+  assert.ok(st.alarm > Date.now() + 170 * 86400000);
+  await team.alarm();   // troppo presto: resta
+  assert.deepEqual((await call(env, "/sync/sync", {}, asTeam(code))).body.seen, {"5": ["a"]});
+  const meta = await st.get("syncmeta"); await st.put("syncmeta", {...meta, last: Date.now() - 181 * 86400000});
+  await team.alarm();
+  assert.equal((await call(env, "/sync/sync", {}, asTeam(code))).status, 404);
 });
 
 

@@ -15,7 +15,7 @@ Idee per Game Patch Radar, in ordine di priorità.
 - [x] Giochi da tenere d'occhio con soglia di prezzo
 - [x] «Annulla» dopo aggiunta/rimozione di un gioco
 - [x] Stato del ponte Cloudflare (token in scadenza)
-- [ ] (rimandato) Salvataggio/sincronizzazione di «letto» e «salvati»: oggi restano nel browser di ciascuno, va bene così
+- [x] Salvataggio/sincronizzazione di «letto» e «salvati» tra dispositivi, con codice personale (⚙ → Sincronizza tra dispositivi)
 - [ ] (rimandato) Altre fonti oltre a Steam
 - [x] Squadra: «Ci gioco» / «Mi interessa», codice del gruppo, schermata Squadra
 - [x] Squadra: messaggio pronto per WhatsApp, saldi di gruppo (in app), sessioni di gioco con .ics, note sulle patch
