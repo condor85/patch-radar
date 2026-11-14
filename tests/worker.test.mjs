@@ -438,6 +438,31 @@ test("note: patch non valida, testo troppo corto, limiti per patch e totale, lun
   assert.equal((await call(env, "/team/note", {name: "Ospite", action: "add", gid: "b", text: "ciao ciao"}, asTeam(code))).status, 403);
 });
 
+test("nomi e patch con chiavi speciali degli oggetti (constructor, __proto__) vengono rifiutati", async () => {
+  mockNet(); const env = teamEnv(); const code = await joined(env, "Anna");
+  for (const name of ["constructor", "Constructor", "__proto__"]) assert.equal((await call(env, "/team/join", {name}, asTeam(code))).status, 400, name);
+  assert.equal((await call(env, "/team/vote", {name: "constructor", appid: 5, kind: "play"}, asTeam(code))).status, 400);
+  for (const gid of ["constructor", "__proto__", "toString"]) assert.equal((await call(env, "/team/note", {name: "Anna", action: "add", gid, text: "ciao ciao"}, asTeam(code))).status, 400, gid);
+  assert.deepEqual((await call(env, "/team/state", {}, asTeam(code))).body.members, ["Anna"]);
+});
+
+test("password admin sbagliata: senza KV il blocco usa l'archivio TEAM (5 errori → 429, altri indirizzi liberi, la password giusta azzera)", async () => {
+  mockNet(); const env = teamEnv(); delete env.RL;
+  for (let i = 0; i < 5; i++) assert.equal((await call(env, "/login", {}, {auth: "Bearer sbagliata-" + i, ip: "4.4.4.4"})).status, 401);
+  assert.equal((await call(env, "/login", {}, {ip: "4.4.4.4"})).status, 429);
+  assert.equal((await call(env, "/login", {}, {ip: "6.6.6.6"})).status, 200);
+  for (let i = 0; i < 3; i++) await call(env, "/login", {}, {auth: "Bearer sbagliata-" + i, ip: "7.7.7.7"});
+  assert.equal((await call(env, "/login", {}, {ip: "7.7.7.7"})).status, 200);
+  for (let i = 0; i < 4; i++) await call(env, "/login", {}, {auth: "Bearer sbagliata-" + i, ip: "7.7.7.7"});
+  assert.equal((await call(env, "/login", {}, {ip: "7.7.7.7"})).status, 200);   // il conteggio era ripartito da zero
+});
+
+test("indirizzo non valido nell'intestazione → trattato come «?» (nessuna chiave strana nell'archivio)", async () => {
+  mockNet(); const env = teamEnv(); await setup(env);
+  for (let i = 0; i < 8; i++) assert.equal((await call(env, "/team/state", {}, {auth: "Bearer no" + i, ip: "__proto__"})).status, 401);
+  assert.equal((await call(env, "/team/state", {}, {auth: "Bearer no", ip: "constructor"})).status, 429);   // stesso «?» di prima
+});
+
 test("note e sessioni richiedono il codice", async () => {
   mockNet(); const env = teamEnv(); await joined(env, "Anna");
   assert.equal((await call(env, "/team/note", {name: "Anna", action: "add", gid: "a", text: "ciao ciao"}, asTeam("sbagliato", "8.8.8.8"))).status, 401);

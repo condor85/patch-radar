@@ -306,7 +306,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
 </div>
 
 <script>
-const APP_VERSION = "2026-11-13.4";
+const APP_VERSION = "2026-11-14.1";
 /* Se online c'è una versione più recente dell'app, la ricarica da sola (una volta sola per versione). */
 (async () => {
  if (location.protocol === "file:") return;
@@ -1487,6 +1487,7 @@ async function doRefresh(manual) {
  ensureSelected();
  syncNotifIfChanged().catch(() => {});
  checkBridgeQuiet();
+ teamRefresh();   // tiene aggiornati saldi di gruppo, voti e sessioni (non fa nulla se non sei in squadra)
  const [errors] = await Promise.all([Promise.all(visibleKeys().map(loadGame)), loadCheck()]);
  baselineSeen();
  const onHome = isHome();   // nella schermata principale conta solo se nessun gioco si è caricato
@@ -2004,7 +2005,7 @@ function teamFromHash() {
  if (!m) return;
  try { history.replaceState(null, "", location.pathname + location.search); } catch {}
  let c = ""; try { c = decodeURIComponent(m[1]); } catch { return; }
- if (inTeam()) return;
+ if (team.code && team.name) return;   // già in squadra (non inTeam(): a quest'ora il ponte non è ancora noto). Un codice sbagliato nel link non deve cancellare l'iscrizione salvata
  team = {code: c, name: team.name || ""};   // solo precompilato: si salva quando entri davvero
  setTimeout(openTeam, 600);
 }
@@ -2058,7 +2059,7 @@ applyTheme(currentTheme());
  });
 })();
 fetch("config.json", {cache: "no-store"}).then(r => r.ok ? r.json() : null).then(c => {
- if (c) { CFG = c; setTopicLink(); renderAdmin(); }
+ if (c) { CFG = c; setTopicLink(); renderAdmin(); teamRefresh(); }   // solo ora si conosce l'indirizzo del ponte: da qui si può caricare la squadra
 }).catch(() => {});
 
 /* ---------- Installazione come app (PWA) ---------- */
