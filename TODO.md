@@ -18,5 +18,6 @@ Idee per Game Patch Radar, in ordine di priorità.
 - [ ] (rimandato) Salvataggio/sincronizzazione di «letto» e «salvati»: oggi restano nel browser di ciascuno, va bene così
 - [ ] (rimandato) Altre fonti oltre a Steam
 - [x] Squadra: «Ci gioco» / «Mi interessa», codice del gruppo, schermata Squadra
-- [ ] Idee per la squadra ancora da fare: messaggio pronto per WhatsApp con la patch, avviso di saldo di gruppo, sessioni di gioco, note del gruppo su una patch
+- [x] Squadra: messaggio pronto per WhatsApp, saldi di gruppo (in app), sessioni di gioco con .ics, note sulle patch
+- [ ] Idea: notifica push di saldo di gruppo e promemoria delle sessioni (servirebbe far parlare l'archivio della squadra con ntfy)
 

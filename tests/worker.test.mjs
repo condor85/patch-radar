@@ -383,6 +383,68 @@ test("squadra: origine non consentita → 403", async () => {
 });
 
 
+const inDays = d => Date.now() + d * 86400000;
+const joined = async (env, ...names) => { const code = await setup(env); for (const n of names) await call(env, "/team/join", {name: n}, asTeam(code)); return code; };
+
+test("sessioni: si crea, ci si aggiunge e si toglie; le date passano ordinate", async () => {
+  mockNet(); const env = teamEnv(); const code = await joined(env, "Anna", "Marco");
+  const a = await call(env, "/team/session", {name: "Anna", action: "add", appid: 892970, ts: inDays(3), note: "  Server di Anna <b> "}, asTeam(code));
+  assert.equal(a.status, 200);
+  await call(env, "/team/session", {name: "Marco", action: "add", appid: 5, ts: inDays(1)}, asTeam(code));
+  const st = (await call(env, "/team/state", {}, asTeam(code))).body.sessions;
+  assert.equal(st.length, 2); assert.equal(st[0].appid, 5); assert.equal(st[1].note, "Server di Anna b");
+  assert.deepEqual(st[1].going, ["Anna"]); assert.equal(st[1].by, "Anna");
+  const id = st[1].id;
+  assert.deepEqual((await call(env, "/team/session", {name: "Marco", action: "go", id}, asTeam(code))).body.sessions[1].going, ["Anna", "Marco"]);
+  assert.deepEqual((await call(env, "/team/session", {name: "Marco", action: "go", id}, asTeam(code))).body.sessions[1].going, ["Anna"]);
+});
+
+test("sessioni: solo chi le crea le elimina; date non valide, sessione assente, non entrati", async () => {
+  mockNet(); const env = teamEnv(); const code = await joined(env, "Anna", "Marco");
+  await call(env, "/team/session", {name: "Anna", action: "add", appid: 7, ts: inDays(2)}, asTeam(code));
+  const id = (await call(env, "/team/state", {}, asTeam(code))).body.sessions[0].id;
+  assert.equal((await call(env, "/team/session", {name: "Marco", action: "del", id}, asTeam(code))).status, 403);
+  for (const ts of [Date.now() - 86400000, inDays(400), "domani", null, NaN]) assert.equal((await call(env, "/team/session", {name: "Anna", action: "add", appid: 7, ts}, asTeam(code))).status, 400, "ts " + ts);
+  assert.equal((await call(env, "/team/session", {name: "Anna", action: "add", appid: 0, ts: inDays(1)}, asTeam(code))).status, 400);
+  assert.equal((await call(env, "/team/session", {name: "Anna", action: "boh"}, asTeam(code))).status, 400);
+  assert.equal((await call(env, "/team/session", {name: "Anna", action: "go", id: "nonesiste"}, asTeam(code))).status, 404);
+  assert.equal((await call(env, "/team/session", {name: "Ospite", action: "add", appid: 7, ts: inDays(1)}, asTeam(code))).status, 403);
+  assert.equal((await call(env, "/team/session", {name: "Anna", action: "del", id}, asTeam(code))).body.sessions.length, 0);
+});
+
+test("sessioni: tetto di 40; passate da più di 6 ore spariscono", async () => {
+  mockNet(); const env = teamEnv(); const code = await joined(env, "Anna");
+  for (let i = 0; i < 40; i++) assert.equal((await call(env, "/team/session", {name: "Anna", action: "add", appid: 7, ts: inDays(1 + i / 100)}, asTeam(code))).status, 200);
+  assert.equal((await call(env, "/team/session", {name: "Anna", action: "add", appid: 7, ts: inDays(2)}, asTeam(code))).status, 409);
+});
+
+test("note: aggiunta, elenco con il nome, eliminazione solo delle proprie", async () => {
+  mockNet(); const env = teamEnv(); const code = await joined(env, "Anna", "Marco");
+  const a = await call(env, "/team/note", {name: "Anna", action: "add", gid: "g-123", text: "  Questa rompe i <script>salvataggi  "}, asTeam(code));
+  assert.equal(a.status, 200);
+  const n = a.body.notes["g-123"]; assert.equal(n.length, 1); assert.equal(n[0].name, "Anna"); assert.equal(n[0].text, "Questa rompe i scriptsalvataggi");
+  assert.equal((await call(env, "/team/note", {name: "Marco", action: "del", gid: "g-123", id: n[0].id}, asTeam(code))).status, 403);
+  assert.equal((await call(env, "/team/note", {name: "Anna", action: "del", gid: "g-123", id: "no"}, asTeam(code))).status, 404);
+  assert.deepEqual((await call(env, "/team/note", {name: "Anna", action: "del", gid: "g-123", id: n[0].id}, asTeam(code))).body.notes, {});
+});
+
+test("note: patch non valida, testo troppo corto, limiti per patch e totale, lunghezza tagliata", async () => {
+  mockNet(); const env = teamEnv(); const code = await joined(env, "Anna");
+  for (const gid of ["", "a b", "x".repeat(41), 5, null, "../x"]) assert.equal((await call(env, "/team/note", {name: "Anna", action: "add", gid, text: "ciao ciao"}, asTeam(code))).status, 400, "gid " + gid);
+  assert.equal((await call(env, "/team/note", {name: "Anna", action: "add", gid: "a", text: "x"}, asTeam(code))).status, 400);
+  assert.equal((await call(env, "/team/note", {name: "Anna", action: "add", gid: "a", text: "y".repeat(280 * 2)}, asTeam(code))).body.notes.a[0].text.length, 280);
+  for (let i = 1; i < 20; i++) assert.equal((await call(env, "/team/note", {name: "Anna", action: "add", gid: "a", text: "nota " + i}, asTeam(code))).status, 200);
+  assert.equal((await call(env, "/team/note", {name: "Anna", action: "add", gid: "a", text: "una di troppo"}, asTeam(code))).status, 409);
+  assert.equal((await call(env, "/team/note", {name: "Ospite", action: "add", gid: "b", text: "ciao ciao"}, asTeam(code))).status, 403);
+});
+
+test("note e sessioni richiedono il codice", async () => {
+  mockNet(); const env = teamEnv(); await joined(env, "Anna");
+  assert.equal((await call(env, "/team/note", {name: "Anna", action: "add", gid: "a", text: "ciao ciao"}, asTeam("sbagliato", "8.8.8.8"))).status, 401);
+  assert.equal((await call(env, "/team/session", {name: "Anna", action: "add", appid: 7, ts: inDays(1)}, asTeam("sbagliato", "8.8.8.8"))).status, 401);
+});
+
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try { await fn(); console.log("ok   -", name); }

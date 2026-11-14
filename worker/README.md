@@ -61,7 +61,7 @@ Poi sul telefono: ⚙ → Amministratore → inserisci la password. Da quel mome
 
 ## Squadra
 Il ponte tiene anche l'archivio privato della squadra (un Durable Object chiamato `TEAM`, dichiarato in `wrangler.toml`, nessun costo sul piano gratuito).
-L'amministratore crea il codice con `/team/setup`; gli amici entrano con `/team/join` e votano con `/team/vote` (il codice sta nell'intestazione `Authorization`). Dopo 8 codici sbagliati l'indirizzo viene bloccato per 15 minuti.
+L'amministratore crea il codice con `/team/setup`; gli amici entrano con `/team/join` e votano con `/team/vote` (il codice sta nell'intestazione `Authorization`). Con `/team/session` e `/team/note` gestisce anche le sessioni di gioco (massimo 40) e le note sulle patch (massimo 20 per patch, 200 in tutto, 280 caratteri). Dopo 8 codici sbagliati l'indirizzo viene bloccato per 15 minuti.
 Se il ponte è stato creato a mano dal pannello Cloudflare, per questa funzione va ripubblicato con il metodo automatico (o `npx wrangler deploy`).
 
 ## Test

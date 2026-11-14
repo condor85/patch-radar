@@ -826,12 +826,14 @@ function renderViewer() {
  const lb = labelsEl(item); if (lb) inner.append(lb);
  if (item.summary) inner.append(summaryBox(item));
  const diff = changesBox(key, item); if (diff) inner.append(diff);
+ const notes = teamNotesEl(item); if (notes) inner.append(notes);
  inner.append(t);
  if (item.truncated) inner.append(warnEl());
  if (tr) inner.append(h("div", {class: "v-note"}, "Traduzione automatica (" + (tr.src === "gemini" ? "Gemini" : "Google Translate") + ") — può contenere imprecisioni."));
  inner.append(h("div", {class: "actions"},
   mkBtn(isSaved(key, item) ? "★ Salvata" : "☆ Salva", () => toggleSaved(key, item)),
   mkBtn("↗ Condividi", () => shareItem(item, game.name)),
+  h("a", {class: "abtn", style: "text-decoration:none", href: "https://wa.me/?text=" + encodeURIComponent(groupMessage(item, game.name)), target: "_blank", rel: "noopener noreferrer", title: "Messaggio pronto per il gruppo"}, "💬 Al gruppo"),
   h("a", {class: "more", href: safeUrl(item.url, game.store), target: "_blank", rel: "noopener noreferrer"}, "Apri su Steam ↗")));
  $("vTr").disabled = false;
  $("vTr").textContent = tr ? "↩ Originale" : "🌐 Italiano";
@@ -1331,6 +1333,7 @@ function buildHomeCard(entry, list, idx) {
  return article;
 }
 function renderHome(box) {
+ const sb = teamSalesBox(); if (sb) box.append(sb);
  const list = homeEntries();
  $("count").textContent = list.length ? "La patch più recente di ogni gioco · tocca per leggerla" : "In attesa dei dati";
  list.forEach((e, i) => box.append(buildHomeCard(e, list, i)));
@@ -1805,11 +1808,111 @@ async function teamApi(path, body, code = team.code) {
  if (!r.ok) { const e = new Error(d.error || "Errore " + r.status); e.status = r.status; throw e; }
  return d;
 }
-function setTeamState(d) { teamState = {members: d.members || [], votes: d.votes || {}}; }
+function setTeamState(d) { teamState = {members: d.members || [], votes: d.votes || {}, sessions: d.sessions || [], notes: d.notes || {}}; }
+async function teamAct(path, body) {   // sessioni e note: ritorna true se è andata a buon fine
+ try { setTeamState(await teamApi(path, {name: team.name, ...body})); teamErr = ""; return true; }
+ catch (e) { toast(e.message); return false; }
+}
+function teamRedraw() { if (isHome()) render(); else renderMeta(); if ($("team").classList.contains("open")) renderTeam(); if ($("viewer").classList.contains("open") && viewerItem) renderViewer(); }
+/* Saldi che interessano alla squadra: giochi in sconto (almeno 10%) scelti da due o più amici */
+function teamSales() {
+ if (!inTeam() || !teamState) return [];
+ const out = [];
+ for (const k of ORDER) {
+  const g = GAMES[k], p = g.price, w = teamWho(g.appid), n = new Set([...w.play, ...w.interest]);
+  if (p && p.discount >= 10 && n.size >= 2) out.push({g, p, names: [...n]});
+ }
+ return out;
+}
+function teamSalesBox() {
+ const l = teamSales(); if (!l.length) return null;
+ const box = h("div", {class: "banner", style: "display:block"}, h("div", {class: "b-text"}, "💰 Saldi che interessano alla squadra"));
+ for (const {g, p, names} of l) box.append(h("div", {class: "tm-who", style: "color:var(--green-text)"}, g.name + ": −" + p.discount + "% · " + p.final + (p.initial ? " (era " + p.initial + ")" : "") + " · " + names.join(", ")));
+ return box;
+}
+function teamLastPatchLine(appid) {
+ const it = latestOf(String(appid)); if (!it) return "";
+ const v = versionOf(it.title);
+ return "Ultima patch: " + ((it.it && it.it.title) || it.title || "Aggiornamento") + (v && !/\bv?\d/.test(it.title || "") ? " · v" + v : "") + " · " + agoLabel(it.date);
+}
+function whenLabel(ts) {
+ try { return new Intl.DateTimeFormat("it-IT", {weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}).format(new Date(ts)); } catch { return new Date(ts).toLocaleString(); }
+}
+function icsText(se, gameName) {
+ const f = t => new Date(t).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+ const esc = t => String(t).replace(/[\\;,]/g, m => "\\" + m).replace(/\n/g, "\\n");
+ return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Game Patch Radar//IT", "CALSCALE:GREGORIAN", "BEGIN:VEVENT", "UID:" + se.id + "@patch-radar", "DTSTAMP:" + f(Date.now()),
+  "DTSTART:" + f(se.ts), "DTEND:" + f(se.ts + 2 * 3600000), "SUMMARY:" + esc("🎮 " + gameName + " con la squadra"),
+  "DESCRIPTION:" + esc((se.note ? se.note + "\n" : "") + "Proposta da " + se.by + (se.going.length ? ". Ci sono: " + se.going.join(", ") : "")), "END:VEVENT", "END:VCALENDAR"].join("\r\n") + "\r\n";
+}
+function downloadIcs(se, gameName) {
+ try {
+  const url = URL.createObjectURL(new Blob([icsText(se, gameName)], {type: "text/calendar;charset=utf-8"}));
+  const a = h("a", {href: url, download: "sessione-" + se.id + ".ics"}); document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+ } catch { toast("Non riesco a creare il file del calendario"); }
+}
+function teamSessionsEl() {
+ const wrap = h("div", {});
+ wrap.append(h("h3", {class: "sec"}, "📅 Prossime sessioni"));
+ const list = (teamState.sessions || []).filter(x => GAMES[String(x.appid)]);
+ if (!list.length) wrap.append(h("p", {class: "v-note"}, "Nessuna sessione in programma."));
+ for (const se of list) {
+  const g = GAMES[String(se.appid)], going = se.going.includes(team.name);
+  const row = h("div", {class: "tm-row"}, h("div", {class: "tm-top"}, h("b", {}, g.name + " · " + whenLabel(se.ts))));
+  if (se.note) row.append(h("div", {class: "tm-who"}, se.note));
+  row.append(h("div", {class: "tm-who"}, "Proposta da " + se.by + " · ci sono: " + (se.going.length ? se.going.join(", ") : "nessuno")));
+  const lp = teamLastPatchLine(se.appid); if (lp) row.append(h("div", {class: "tm-who"}, "🆕 " + lp));
+  const btns = h("div", {class: "tm-btns"},
+   h("button", {type: "button", class: "abtn" + (going ? " on" : ""), onclick: async e => { e.target.disabled = true; await teamAct("/team/session", {action: "go", id: se.id}); teamRedraw(); }}, going ? "✅ Ci sono" : "Ci sono"),
+   h("button", {type: "button", class: "abtn", onclick: () => downloadIcs(se, g.name)}, "📅 Calendario"));
+  if (se.by === team.name) btns.append(h("button", {type: "button", class: "abtn danger", onclick: async e => { if (!confirm("Eliminare questa sessione?")) return; e.target.disabled = true; await teamAct("/team/session", {action: "del", id: se.id}); teamRedraw(); }}, "🗑"));
+  row.append(btns); wrap.append(row);
+ }
+ const sel = h("select", {class: "tin", "aria-label": "Gioco"}); for (const k of ORDER) sel.append(h("option", {value: GAMES[k].appid}, GAMES[k].name));
+ const when = h("input", {type: "datetime-local", class: "tin", "aria-label": "Data e ora"});
+ const note = h("input", {type: "text", placeholder: "Nota (facoltativa, es. «server di Anna»)", maxlength: "80", autocomplete: "off"});
+ const add = h("button", {type: "button", class: "abtn pri", onclick: async () => {
+  const ts = new Date(when.value).getTime();
+  if (!when.value || !Number.isFinite(ts)) { toast("Scegli giorno e ora"); return; }
+  add.disabled = true;
+  if (await teamAct("/team/session", {action: "add", appid: Number(sel.value), ts, note: note.value})) { toast("📅 Sessione aggiunta"); }
+  add.disabled = false; teamRedraw();
+ }}, "＋ Proponi una sessione");
+ wrap.append(h("div", {class: "tm-row"}, h("div", {class: "tm-who", style: "margin:0 0 6px"}, "Nuova sessione"), sel, when, note, h("div", {class: "tm-btns"}, add)));
+ return wrap;
+}
+/* Note della squadra sotto una patch (nel visualizzatore) */
+function teamNotesEl(item) {
+ const gid = String(item.gid || "");
+ if (!inTeam() || !teamState || !/^[A-Za-z0-9_-]{1,40}$/.test(gid)) return null;
+ const box = h("div", {class: "sum diff"}, h("b", {}, "💬 Note della squadra"));
+ for (const n of (teamState.notes[gid] || [])) {
+  const row = h("div", {class: "tm-who", style: "color:var(--text)"}, h("strong", {}, n.name + ": "), n.text);
+  if (n.name === team.name) row.append(" ", h("button", {type: "button", class: "abtn mini", title: "Elimina la tua nota", onclick: async () => { if (await teamAct("/team/note", {action: "del", gid, id: n.id})) teamRedraw(); }}, "🗑"));
+  box.append(row);
+ }
+ const inp = h("input", {type: "text", placeholder: "Scrivi una nota per gli amici…", maxlength: "280", autocomplete: "off", "aria-label": "Nota"});
+ const go = h("button", {type: "button", class: "abtn", onclick: async () => {
+  if (inp.value.trim().length < 2) return;
+  go.disabled = true;
+  const ok = await teamAct("/team/note", {action: "add", gid, text: inp.value});
+  go.disabled = false; if (ok) teamRedraw();
+ }}, "Aggiungi");
+ inp.addEventListener("keydown", e => { if (e.key === "Enter") go.click(); });
+ box.append(h("div", {class: "row", style: "display:flex;gap:6px;margin-top:8px"}, inp, go));
+ return box;
+}
+/* Messaggio pronto per il gruppo WhatsApp: gioco, versione, riassunto in italiano e link alla nota completa */
+function groupMessage(item, gameName) {
+ const v = versionOf(item.title), title = (item.it && item.it.title) || item.title || "Aggiornamento";
+ const sum = (item.summary || "").split("\n").filter(Boolean).slice(0, 5).join("\n");
+ return "🎮 " + gameName + ": nuova patch" + (v ? " v" + v : "") + "\n" + title + (sum ? "\n" + sum : "") + "\n" + (item.url ? "Nota completa: " + item.url + "\n" : "") + "Tutte le patch: " + inviteUrl();
+}
 async function teamRefresh() {
  if (!inTeam()) return;
  try { setTeamState(await teamApi("/team/state")); teamErr = ""; } catch (e) { teamErr = e.message; }
- renderMeta(); if ($("team").classList.contains("open")) renderTeam();
+ teamRedraw();
 }
 async function teamJoin(code, name) {
  const d = await teamApi("/team/join", {name}, code);
@@ -1819,7 +1922,7 @@ async function teamVote(appid, kind) {
  const cur = (teamState && teamState.votes[String(appid)] || {})[team.name];
  try { setTeamState(await teamApi("/team/vote", {name: team.name, appid, kind: cur === kind ? null : kind})); teamErr = ""; }
  catch (e) { toast(e.message); }
- renderMeta(); if ($("team").classList.contains("open")) renderTeam();
+ teamRedraw();
 }
 const TEAM_KINDS = [["play", "🎮 Ci gioco"], ["interest", "⭐ Mi interessa"]];
 function teamWho(appid) {
@@ -1866,6 +1969,9 @@ function renderTeam() {
  const members = teamState ? teamState.members : [];
  box.append(h("p", {class: "v-note"}, "Sei " + team.name + (members.length ? " · nella squadra: " + members.join(", ") : "") + ". Tocca i pulsanti per dire a quali giochi giochi o che ti interessano."));
  if (!teamState) { box.append(h("p", {class: "v-note"}, "Carico la squadra…")); return; }
+ const sales = teamSalesBox(); if (sales) box.append(sales);
+ box.append(teamSessionsEl());
+ box.append(h("h3", {class: "sec"}, "🎮 Giochi della squadra"));
  const rows = ORDER.map(k => ({g: GAMES[k], w: teamWho(GAMES[k].appid)}))
   .sort((a, b) => (b.w.play.length * 2 + b.w.interest.length) - (a.w.play.length * 2 + a.w.interest.length));
  for (const {g, w} of rows) {

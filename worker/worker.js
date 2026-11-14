@@ -261,6 +261,14 @@ const TEAM_FAIL_WINDOW = 900000;   // millisecondi
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 const normCode = c => String(c == null ? "" : c).toLowerCase().replace(/[^a-z0-9]/g, "");
 const KINDS = new Set(["play", "interest"]);
+const MAX_SESSIONS = 40;
+const MAX_NOTES = 200;          // note in tutto
+const MAX_NOTES_PER_PATCH = 20;
+const NOTE_LEN = 280;
+const SESSION_NOTE_LEN = 80;
+const SESSION_GRACE = 6 * 3600000;   // una sessione resta visibile per 6 ore dopo l'inizio
+const newId = () => { const a = new Uint8Array(5); crypto.getRandomValues(a); return [...a].map(b => b.toString(16).padStart(2, "0")).join(""); };
+const cleanText = (s, max) => String(s == null ? "" : s).replace(/[<>\u0000-\u0008\u000b-\u001f\u007f]/g, "").replace(/[ \t]+/g, " ").trim().slice(0, max);
 
 function newCode() {
   const a = new Uint8Array(12); crypto.getRandomValues(a);
@@ -298,7 +306,15 @@ export class Team {
       for (const [k, kind] of Object.entries(byKey)) if (members[k]) row[members[k].name] = kind;
       if (Object.keys(row).length) out[appid] = row;
     }
-    return {members: Object.values(members).map(m => m.name).sort((a, b) => a.localeCompare(b, "it")), votes: out};
+    const nameOf = k => (members[k] ? members[k].name : null);
+    const now = Date.now();
+    const sessions = ((await this.state.storage.get("sessions")) || []).filter(x => x.ts + SESSION_GRACE > now)
+      .map(x => ({id: x.id, appid: x.appid, ts: x.ts, by: nameOf(x.by) || "?", note: x.note || "", going: x.going.map(nameOf).filter(Boolean)}))
+      .sort((a, b) => a.ts - b.ts);
+    const rawNotes = (await this.state.storage.get("notes")) || {};
+    const notes = {};
+    for (const [gid, list] of Object.entries(rawNotes)) notes[gid] = list.map(n => ({id: n.id, name: nameOf(n.by) || "?", text: n.text, ts: n.ts}));
+    return {members: Object.values(members).map(m => m.name).sort((a, b) => a.localeCompare(b, "it")), votes: out, sessions, notes};
   }
 
   async run(m) {
@@ -332,6 +348,54 @@ export class Team {
       await st.put("members", members);
       return {ok: true, name: members[key].name, ...(await this.snapshot())};
     }
+    if (m.op === "session") {
+      const key = memberKey(cleanMember(m.name));
+      if (!members[key]) throw new HttpError(403, "Prima entra nella squadra con il tuo nome.");
+      const now2 = Date.now();
+      let list = ((await st.get("sessions")) || []).filter(x => x.ts + SESSION_GRACE > now2);
+      if (m.action === "add") {
+        const appid = parseAppId(m.appid), ts = m.ts;
+        if (!appid) throw new HttpError(400, "Numero app Steam non valido.");
+        if (typeof ts !== "number" || !Number.isFinite(ts) || ts < now2 - 3600000 || ts > now2 + 366 * 86400000) throw new HttpError(400, "Scegli una data e un'ora nel futuro (entro un anno).");
+        if (list.length >= MAX_SESSIONS) throw new HttpError(409, "Troppe sessioni in programma: aspetta che ne passi qualcuna.");
+        list.push({id: newId(), appid, ts: Math.round(ts), by: key, going: [key], note: cleanText(m.note, SESSION_NOTE_LEN)});
+      } else if (m.action === "go" || m.action === "del") {
+        const i = list.findIndex(x => x.id === m.id);
+        if (i < 0) throw new HttpError(404, "Sessione non trovata (forse è già passata).");
+        if (m.action === "del") {
+          if (list[i].by !== key) throw new HttpError(403, "Solo chi l'ha creata può eliminarla.");
+          list.splice(i, 1);
+        } else {
+          const g = list[i].going;
+          list[i].going = g.includes(key) ? g.filter(x => x !== key) : [...g, key];
+        }
+      } else throw new HttpError(400, "Richiesta non valida.");
+      await st.put("sessions", list);
+      return {ok: true, ...(await this.snapshot())};
+    }
+    if (m.op === "note") {
+      const key = memberKey(cleanMember(m.name));
+      if (!members[key]) throw new HttpError(403, "Prima entra nella squadra con il tuo nome.");
+      const gid = typeof m.gid === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(m.gid) ? m.gid : null;
+      if (!gid) throw new HttpError(400, "Patch non valida.");
+      const notes = (await st.get("notes")) || {};
+      const list = notes[gid] || [];
+      if (m.action === "add") {
+        const text = cleanText(m.text, NOTE_LEN);
+        if (text.length < 2) throw new HttpError(400, "Scrivi almeno due lettere.");
+        if (list.length >= MAX_NOTES_PER_PATCH) throw new HttpError(409, "Troppe note su questa patch.");
+        if (Object.values(notes).reduce((n, l) => n + l.length, 0) >= MAX_NOTES) throw new HttpError(409, "Troppe note nella squadra: elimina le più vecchie.");
+        notes[gid] = [...list, {id: newId(), by: key, text, ts: Date.now()}];
+      } else if (m.action === "del") {
+        const n = list.find(x => x.id === m.id);
+        if (!n) throw new HttpError(404, "Nota non trovata.");
+        if (n.by !== key) throw new HttpError(403, "Puoi eliminare solo le tue note.");
+        notes[gid] = list.filter(x => x.id !== m.id);
+        if (!notes[gid].length) delete notes[gid];
+      } else throw new HttpError(400, "Richiesta non valida.");
+      await st.put("notes", notes);
+      return {ok: true, ...(await this.snapshot())};
+    }
     if (m.op === "vote") {
       const key = memberKey(cleanMember(m.name));
       if (!members[key]) throw new HttpError(403, "Prima entra nella squadra con il tuo nome.");
@@ -358,11 +422,12 @@ async function teamCall(env, op, request, body) {
   const stub = env.TEAM.get(env.TEAM.idFromName("squadra"));
   const r = await stub.fetch("https://squadra.internal/" + op, {method: "POST", body: JSON.stringify({
     op, ip: request.headers.get("CF-Connecting-IP") || "?", code: m ? m[1] : "",
-    name: body.name, appid: body.appid, kind: body.kind === undefined ? undefined : body.kind})});
+    name: body.name, appid: body.appid, kind: body.kind === undefined ? undefined : body.kind,
+    action: body.action, ts: body.ts, id: body.id, note: body.note, gid: body.gid, text: body.text})});
   let d = {}; try { d = await r.json(); } catch {}
   return {status: r.status, body: d};
 }
-const TEAM_OPS = {"/team/state": "state", "/team/join": "join", "/team/vote": "vote"};
+const TEAM_OPS = {"/team/state": "state", "/team/join": "join", "/team/vote": "vote", "/team/session": "session", "/team/note": "note"};
 
 export default {
   async fetch(request, env) {
