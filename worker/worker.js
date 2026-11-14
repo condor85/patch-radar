@@ -8,7 +8,8 @@
      GITHUB_TOKEN    (secret)  token fine-grained con «Contents: Read and write» solo su questo repository
      REPO            (var)     es. condor85/patch-radar
      ALLOWED_ORIGIN  (var)     es. https://condor85.github.io   (solo origine, senza percorso)
-     RL              (KV, facoltativo) tiene il conto dei tentativi di accesso sbagliati */
+     RL              (KV, facoltativo) tiene il conto dei tentativi di accesso sbagliati
+     TEAM            (Durable Object, dichiarato in wrangler.toml) archivio privato della squadra: «Ci gioco» / «Mi interessa» */
 
 const MAX_GAMES = 40;           // tetto ai giochi: protegge la durata del controllo orario
 const MAX_BODY = 2048;          // byte accettati in una richiesta
@@ -249,6 +250,120 @@ const ACTIONS = {
   }
 };
 
+
+/* ---------- Squadra: giochi che gli amici seguono o vorrebbero provare ----------
+   I dati stanno in un Durable Object privato (non nel repository pubblico). Si entra con il «codice della squadra», che crea
+   l'amministratore; ognuno sceglie un nome. Il codice non è una password forte: va bene per un gruppo di amici fidati. */
+const TEAM_MAX_MEMBERS = 30;
+const TEAM_MAX_GAMES = 200;
+const TEAM_FAIL_LIMIT = 8;
+const TEAM_FAIL_WINDOW = 900000;   // millisecondi
+const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
+const normCode = c => String(c == null ? "" : c).toLowerCase().replace(/[^a-z0-9]/g, "");
+const KINDS = new Set(["play", "interest"]);
+
+function newCode() {
+  const a = new Uint8Array(12); crypto.getRandomValues(a);
+  return [...a].map(b => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+}
+const showCode = c => c.match(/.{1,4}/g).join("-");
+async function sha(text) {
+  return [...new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(text)))].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+function cleanMember(s) {
+  const n = String(s == null ? "" : s).replace(/[<>\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim().slice(0, 24);
+  if (n.length < 2) throw new HttpError(400, "Scrivi un nome di almeno due lettere.");
+  return n;
+}
+const memberKey = n => n.toLocaleLowerCase("it-IT");
+
+export class Team {
+  constructor(state) { this.state = state; }
+
+  async fetch(request) {
+    const reply = (status, body) => new Response(JSON.stringify(body), {status, headers: {"Content-Type": "application/json"}});
+    try { return reply(200, await this.run(await request.json())); }
+    catch (e) {
+      if (e instanceof HttpError) return reply(e.status, {error: e.message});
+      return reply(500, {error: "Errore del servizio. Riprova."});
+    }
+  }
+
+  async snapshot() {
+    const members = (await this.state.storage.get("members")) || {};
+    const votes = (await this.state.storage.get("votes")) || {};
+    const out = {};
+    for (const [appid, byKey] of Object.entries(votes)) {
+      const row = {};
+      for (const [k, kind] of Object.entries(byKey)) if (members[k]) row[members[k].name] = kind;
+      if (Object.keys(row).length) out[appid] = row;
+    }
+    return {members: Object.values(members).map(m => m.name).sort((a, b) => a.localeCompare(b, "it")), votes: out};
+  }
+
+  async run(m) {
+    const st = this.state.storage;
+    if (m.op === "setup") {   // chiamata solo dal ponte, dopo la verifica della password dell'amministratore
+      const code = newCode();
+      await st.put("meta", {codeHash: await sha(code), created: Date.now()});
+      await st.delete("fails");
+      return {ok: true, code: showCode(code)};
+    }
+    const meta = await st.get("meta");
+    if (!meta) throw new HttpError(404, "La squadra non è ancora stata creata: chiedi all'amministratore di creare il codice.");
+    const now = Date.now(), fails = (await st.get("fails")) || {}, rec = fails[m.ip];
+    const recent = rec && now - rec.t < TEAM_FAIL_WINDOW;
+    if (recent && rec.n >= TEAM_FAIL_LIMIT) throw new HttpError(429, "Troppi tentativi sbagliati. Riprova tra qualche minuto.");
+    if (!(await sameSecret(await sha(normCode(m.code)), meta.codeHash))) {
+      for (const [ip, r] of Object.entries(fails)) if (now - r.t >= TEAM_FAIL_WINDOW) delete fails[ip];
+      fails[m.ip] = {n: (recent ? rec.n : 0) + 1, t: now};
+      await st.put("fails", fails);
+      throw new HttpError(401, "Codice della squadra errato.");
+    }
+    if (rec) { delete fails[m.ip]; await st.put("fails", fails); }
+
+    if (m.op === "state") return {ok: true, ...(await this.snapshot())};
+
+    const members = (await st.get("members")) || {};
+    if (m.op === "join") {
+      const name = cleanMember(m.name), key = memberKey(name);
+      if (!members[key] && Object.keys(members).length >= TEAM_MAX_MEMBERS) throw new HttpError(409, "La squadra è al completo.");
+      members[key] = {name: members[key] ? members[key].name : name, ts: now};
+      await st.put("members", members);
+      return {ok: true, name: members[key].name, ...(await this.snapshot())};
+    }
+    if (m.op === "vote") {
+      const key = memberKey(cleanMember(m.name));
+      if (!members[key]) throw new HttpError(403, "Prima entra nella squadra con il tuo nome.");
+      const appid = parseAppId(m.appid);
+      if (!appid) throw new HttpError(400, "Numero app Steam non valido.");
+      if (m.kind !== null && !KINDS.has(m.kind)) throw new HttpError(400, "Richiesta non valida.");
+      const votes = (await st.get("votes")) || {};
+      const row = votes[appid] || {};
+      if (m.kind === null) delete row[key]; else row[key] = m.kind;
+      if (Object.keys(row).length) {
+        if (!votes[appid] && Object.keys(votes).length >= TEAM_MAX_GAMES) throw new HttpError(409, "Troppi giochi in squadra.");
+        votes[appid] = row;
+      } else delete votes[appid];
+      await st.put("votes", votes);
+      return {ok: true, ...(await this.snapshot())};
+    }
+    throw new HttpError(404, "Non trovato.");
+  }
+}
+
+async function teamCall(env, op, request, body) {
+  if (!env.TEAM) throw new HttpError(503, "La squadra non è attiva sul ponte: serve ripubblicare il ponte.");
+  const m = /^Bearer (.{1,200})$/.exec(request.headers.get("Authorization") || "");
+  const stub = env.TEAM.get(env.TEAM.idFromName("squadra"));
+  const r = await stub.fetch("https://squadra.internal/" + op, {method: "POST", body: JSON.stringify({
+    op, ip: request.headers.get("CF-Connecting-IP") || "?", code: m ? m[1] : "",
+    name: body.name, appid: body.appid, kind: body.kind === undefined ? undefined : body.kind})});
+  let d = {}; try { d = await r.json(); } catch {}
+  return {status: r.status, body: d};
+}
+const TEAM_OPS = {"/team/state": "state", "/team/join": "join", "/team/vote": "vote"};
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
@@ -256,6 +371,18 @@ export default {
       if (origin && origin !== env.ALLOWED_ORIGIN) throw new HttpError(403, "Origine non consentita.");
       if (request.method === "OPTIONS") return new Response(null, {status: 204, headers: corsHeaders(env, origin)});
       const path = new URL(request.url).pathname;
+      if (Object.prototype.hasOwnProperty.call(TEAM_OPS, path) || path === "/team/setup") {
+        if (request.method !== "POST") throw new HttpError(405, "Metodo non consentito.");
+        const body = await readBody(request);
+        if (path === "/team/setup") {   // crea (o cambia) il codice: solo l'amministratore
+          await authenticate(request, env);
+          if (!env.TEAM) throw new HttpError(503, "La squadra non è attiva sul ponte: serve ripubblicare il ponte.");
+          const r = await env.TEAM.get(env.TEAM.idFromName("squadra")).fetch("https://squadra.internal/setup", {method: "POST", body: JSON.stringify({op: "setup"})});
+          return json(env, origin, r.status, await r.json());
+        }
+        const r = await teamCall(env, TEAM_OPS[path], request, body);
+        return json(env, origin, r.status, r.body);
+      }
       const action = Object.prototype.hasOwnProperty.call(ACTIONS, path) ? ACTIONS[path] : null;
       if (!action) throw new HttpError(404, "Non trovato.");
       if (request.method !== "POST") throw new HttpError(405, "Metodo non consentito.");

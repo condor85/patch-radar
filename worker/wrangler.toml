@@ -12,3 +12,12 @@ ALLOWED_ORIGIN = "https://condor85.github.io"
 # [[kv_namespaces]]
 # binding = "RL"
 # id = "<id dell'archivio KV>"
+
+# Archivio privato della squadra («Ci gioco» / «Mi interessa»). Funziona anche con il piano gratuito.
+[[durable_objects.bindings]]
+name = "TEAM"
+class_name = "Team"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Team"]

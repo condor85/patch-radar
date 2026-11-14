@@ -1,6 +1,6 @@
 // Test del ponte di amministrazione (worker/worker.js). Esecuzione: node tests/worker.test.mjs
 import assert from "node:assert/strict";
-import worker from "../worker/worker.js";
+import worker, {Team} from "../worker/worker.js";
 
 const ORIGIN = "https://condor85.github.io";
 const PASSWORD = "una-password-lunga-12";
@@ -287,6 +287,99 @@ test("/status: senza intestazione di scadenza daysLeft è null; token non valido
 test("/status richiede la password", async () => {
   mockNet();
   assert.equal((await call(makeEnv(), "/status", {}, {auth: "Bearer sbagliata-sbagliata"})).status, 401);
+});
+
+
+/* ---------- Squadra ---------- */
+class MockStorage {
+  constructor() { this.m = new Map(); }
+  async get(k) { return this.m.has(k) ? structuredClone(this.m.get(k)) : undefined; }
+  async put(k, v) { this.m.set(k, structuredClone(v)); }
+  async delete(k) { this.m.delete(k); }
+}
+const teamEnv = (extra = {}) => {
+  const team = new Team({storage: new MockStorage()});
+  return makeEnv({TEAM: {idFromName: n => n, get: () => ({fetch: (url, init) => team.fetch(new Request(url, init))})}, ...extra});
+};
+const asTeam = (code, ip = "5.5.5.5") => ({auth: "Bearer " + code, ip});
+const setup = async env => (await call(env, "/team/setup", {})).body.code;
+
+test("squadra: solo l'amministratore crea il codice (12 caratteri, a gruppi di 4)", async () => {
+  mockNet(); const env = teamEnv();
+  assert.equal((await call(env, "/team/setup", {}, {auth: "Bearer sbagliata-sbagliata"})).status, 401);
+  const r = await call(env, "/team/setup", {});
+  assert.equal(r.status, 200); assert.match(r.body.code, /^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
+});
+
+test("squadra: senza il TEAM sul ponte → 503; prima della creazione → 404", async () => {
+  mockNet();
+  assert.equal((await call(makeEnv(), "/team/state", {}, asTeam("x"))).status, 503);
+  assert.equal((await call(makeEnv(), "/team/setup", {})).status, 503);
+  assert.equal((await call(teamEnv(), "/team/state", {}, asTeam("x"))).status, 404);
+});
+
+test("squadra: entrata, voti e stato (nomi senza distinzione di maiuscole, codice con trattini e maiuscole)", async () => {
+  mockNet(); const env = teamEnv(); const code = await setup(env);
+  const j = await call(env, "/team/join", {name: "  Marco  "}, asTeam(code.toUpperCase()));
+  assert.equal(j.status, 200); assert.equal(j.body.name, "Marco"); assert.deepEqual(j.body.members, ["Marco"]);
+  await call(env, "/team/join", {name: "Luca"}, asTeam(code));
+  assert.equal((await call(env, "/team/join", {name: "MARCO"}, asTeam(code))).body.name, "Marco");   // stesso nome: stessa persona
+  assert.equal((await call(env, "/team/vote", {name: "marco", appid: 892970, kind: "play"}, asTeam(code))).status, 200);
+  await call(env, "/team/vote", {name: "Luca", appid: 892970, kind: "interest"}, asTeam(code));
+  const st = await call(env, "/team/state", {}, asTeam(code.replace(/-/g, "")));
+  assert.deepEqual(st.body.members, ["Luca", "Marco"]);
+  assert.deepEqual(st.body.votes, {"892970": {Marco: "play", Luca: "interest"}});
+});
+
+test("squadra: cambiare o togliere il voto; senza voti il gioco sparisce dallo stato", async () => {
+  mockNet(); const env = teamEnv(); const code = await setup(env);
+  await call(env, "/team/join", {name: "Anna"}, asTeam(code));
+  await call(env, "/team/vote", {name: "Anna", appid: 5, kind: "interest"}, asTeam(code));
+  assert.deepEqual((await call(env, "/team/vote", {name: "Anna", appid: 5, kind: "play"}, asTeam(code))).body.votes, {"5": {Anna: "play"}});
+  assert.deepEqual((await call(env, "/team/vote", {name: "Anna", appid: 5, kind: null}, asTeam(code))).body.votes, {});
+});
+
+test("squadra: voto senza essere entrati, appid o tipo non validi", async () => {
+  mockNet(); const env = teamEnv(); const code = await setup(env);
+  assert.equal((await call(env, "/team/vote", {name: "Ospite", appid: 5, kind: "play"}, asTeam(code))).status, 403);
+  await call(env, "/team/join", {name: "Anna"}, asTeam(code));
+  for (const bad of [0, -1, "x", 1.5, null, {}]) assert.equal((await call(env, "/team/vote", {name: "Anna", appid: bad, kind: "play"}, asTeam(code))).status, 400, "appid " + JSON.stringify(bad));
+  for (const bad of ["owner", "", 1, undefined]) assert.equal((await call(env, "/team/vote", {name: "Anna", appid: 5, kind: bad}, asTeam(code))).status, 400, "tipo " + JSON.stringify(bad));
+  assert.equal((await call(env, "/team/join", {name: "a"}, asTeam(code))).status, 400);
+  assert.equal((await call(env, "/team/join", {name: "<b>Bo"}, asTeam(code))).body.name, "bBo");   // niente HTML nei nomi
+});
+
+test("squadra: codice errato → 401, dopo 8 errori l'indirizzo viene bloccato (anche col codice giusto), gli altri no", async () => {
+  mockNet(); const env = teamEnv(); const code = await setup(env);
+  for (let i = 0; i < 8; i++) assert.equal((await call(env, "/team/state", {}, asTeam("sbagliato" + i))).status, 401);
+  assert.equal((await call(env, "/team/state", {}, asTeam(code))).status, 429);
+  assert.equal((await call(env, "/team/state", {}, asTeam(code, "9.9.9.9"))).status, 200);
+  assert.equal((await call(env, "/team/state", {}, {auth: null})).status, 401);
+});
+
+test("squadra: il codice giusto azzera gli errori; un nuovo codice invalida il vecchio ma i voti restano", async () => {
+  mockNet(); const env = teamEnv(); const code = await setup(env);
+  for (let i = 0; i < 3; i++) await call(env, "/team/state", {}, asTeam("no" + i));
+  await call(env, "/team/join", {name: "Anna"}, asTeam(code));
+  await call(env, "/team/vote", {name: "Anna", appid: 5, kind: "play"}, asTeam(code));
+  const code2 = await setup(env);
+  assert.notEqual(code, code2);
+  assert.equal((await call(env, "/team/state", {}, asTeam(code, "7.7.7.7"))).status, 401);
+  assert.deepEqual((await call(env, "/team/state", {}, asTeam(code2))).body.votes, {"5": {Anna: "play"}});
+});
+
+test("squadra: tetto di 30 persone e metodo GET non consentito", async () => {
+  mockNet(); const env = teamEnv(); const code = await setup(env);
+  for (let i = 0; i < 30; i++) assert.equal((await call(env, "/team/join", {name: "Persona " + i}, asTeam(code))).status, 200);
+  assert.equal((await call(env, "/team/join", {name: "Una di troppo"}, asTeam(code))).status, 409);
+  assert.equal((await call(env, "/team/join", {name: "Persona 3"}, asTeam(code))).status, 200);   // chi c'è già può rientrare
+  assert.equal((await call(env, "/team/state", {}, {...asTeam(code), method: "GET"})).status, 405);
+  assert.equal((await call(env, "/team/altro", {}, asTeam(code))).status, 404);
+});
+
+test("squadra: origine non consentita → 403", async () => {
+  mockNet(); const env = teamEnv(); const code = await setup(env);
+  assert.equal((await call(env, "/team/state", {}, {...asTeam(code), origin: "https://evil.example"})).status, 403);
 });
 
 

@@ -17,3 +17,6 @@ Idee per Game Patch Radar, in ordine di priorità.
 - [x] Stato del ponte Cloudflare (token in scadenza)
 - [ ] (rimandato) Salvataggio/sincronizzazione di «letto» e «salvati»: oggi restano nel browser di ciascuno, va bene così
 - [ ] (rimandato) Altre fonti oltre a Steam
+- [x] Squadra: «Ci gioco» / «Mi interessa», codice del gruppo, schermata Squadra
+- [ ] Idee per la squadra ancora da fare: messaggio pronto per WhatsApp con la patch, avviso di saldo di gruppo, sessioni di gioco, note del gruppo su una patch
+

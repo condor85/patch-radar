@@ -67,6 +67,14 @@ footer a{color:var(--link)}
 .toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;pointer-events:none;background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-line);border-radius:12px;padding:10px 14px;font-size:13px;font-weight:650;z-index:60;transition:.3s;max-width:calc(100vw - 32px)}
 .toast.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
 .toast-act{margin-left:12px;border:1px solid var(--green-line);background:transparent;color:var(--green-text);border-radius:8px;padding:3px 10px;font:inherit;font-weight:800;cursor:pointer}
+.tm-row{border:1px solid var(--line);background:var(--panel);border-radius:13px;padding:10px 12px;margin:8px 0}
+.tm-row .tm-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tm-row b{flex:1 1 140px;overflow-wrap:anywhere}
+.tm-who{font-size:12.5px;color:var(--muted);margin-top:5px;overflow-wrap:anywhere}
+.tm-btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.tm-btns .abtn.on,.mchip.tmb.on{background:var(--sel-bg);border-color:var(--sel-line);color:var(--text-strong)}
+.mchip.tmb{cursor:pointer;font:inherit;font-size:11px}
+.tm-code{font:700 20px/1.2 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em;margin:8px 0;overflow-wrap:anywhere}
 .diff ul{margin:6px 0 0 18px;padding:0;font-size:13px}
 .diff li{margin:3px 0}
 .diff .more-n{font-size:12px;color:var(--muted);margin-top:4px}
@@ -247,7 +255,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
 </main>
 <footer>
  I dati vengono recuperati dagli annunci Steam. La pagina si aggiorna all'apertura e poi ogni 30 minuti; gli ultimi dati restano salvati sul dispositivo.
- <br><a id="ntfyLink" href="#">🔔 Gestisci le notifiche</a>
+ <br><a id="ntfyLink" href="#">🔔 Gestisci le notifiche</a> · <a id="teamLink" href="#">👥 Squadra</a>
   <br>Game Patch Radar · By Pugno
 </footer>
 
@@ -273,6 +281,10 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
 </div>
 <div class="viewer" id="welcome" role="dialog" aria-modal="true" aria-label="Benvenuto">
  <div class="v-body"><div class="v-inner" id="welcomeBody"></div></div>
+</div>
+<div class="viewer" id="team" role="dialog" aria-modal="true" aria-label="Squadra">
+ <div class="v-bar"><button class="abtn" id="tClose" type="button">✕ Chiudi</button></div>
+ <div class="v-body"><div class="v-inner" id="teamBody"></div></div>
 </div>
 <div class="viewer" id="invite" role="dialog" aria-modal="true" aria-label="Invita un amico">
  <div class="v-bar"><button class="abtn" id="iClose" type="button">✕ Chiudi</button></div>
@@ -841,7 +853,7 @@ $("vBigger").addEventListener("click", () => setFont(fontIdx + 1));
  });
 })();
 function closeTopOverlay() {
- for (const id of ["viewer", "invite", "welcome", "recap", "manager"]) {
+ for (const id of ["viewer", "invite", "welcome", "recap", "team", "manager"]) {
   if (!$(id).classList.contains("open")) continue;
   if (id === "viewer") closeViewer(); else if (id === "welcome") finishWelcome(); else closeOv(id);
   return;
@@ -1078,6 +1090,20 @@ async function renderBridgeAdmin() {
    try { await bridgeRemove(g); } catch (err) { e.target.disabled = false; msgEl(box, err.message, false); }
   }}, "🗑 Elimina")));
  }
+ box.append(h("h4", {}, "Squadra"));
+ box.append(h("p", {}, "Crea il codice da dare agli amici: con quello entrano nella squadra (giochi a cui giocano o che li interessano). Se ne crei uno nuovo, il vecchio smette di funzionare e gli amici devono rientrare con il nuovo; i voti restano."));
+ const codeOut = h("div", {});
+ box.append(h("div", {class: "row"}, h("button", {class: "abtn", type: "button", onclick: async e => {
+  if (!confirm("Creare un nuovo codice della squadra? Quello vecchio smette di funzionare.")) return;
+  e.target.disabled = true;
+  try {
+   const d = await bridge("/team/setup");
+   codeOut.innerHTML = "";
+   codeOut.append(h("div", {class: "tm-code"}, d.code), h("p", {}, "Mandalo agli amici: si entra da «👥 Squadra» in fondo alla pagina."),
+    h("div", {class: "row-btns"}, mkBtn("📋 Copia codice", async () => { try { await navigator.clipboard.writeText(d.code); toast("📋 Codice copiato"); } catch { toast("Copia non riuscita"); } })));
+  } catch (err) { msgEl(box, err.message, false); }
+  e.target.disabled = false;
+ }}, "👥 Crea o cambia il codice")), codeOut);
  box.append(h("h4", {}, "Notifiche"));
  box.append(h("p", {}, "Se qualcuno manda messaggi falsi sull'argomento delle notifiche, creane uno nuovo: gli altri passano al nuovo da soli."));
  box.append(h("div", {class: "row"}, h("button", {class: "abtn", type: "button", onclick: async e => {
@@ -1385,6 +1411,7 @@ function renderMeta() {
   el.append(h("a", {class: "mchip" + (sale ? " sale" : ""), href: g.store, target: "_blank", rel: "noopener noreferrer", title: "Apri la pagina Steam"},
    sale ? "🏷 −" + p.discount + "% · " + p.final + (p.initial ? " (era " + p.initial + ")" : "") : "💶 " + p.final));
  }
+ teamChips(el, g);
  const pl = g.players;
  if (pl && Number.isFinite(pl.n)) {
   const when = pl.ts ? new Date(pl.ts * 1000).toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"}) : "";
@@ -1759,6 +1786,123 @@ $("inviteBtn").addEventListener("click", openInvite);
 $("guideBtn").addEventListener("click", showWelcome);
 $("iClose").addEventListener("click", () => closeOv("invite"));
 
+
+/* ---------- Squadra: chi gioca a cosa e cosa interessa agli amici (dati nell'archivio privato del ponte) ---------- */
+const TEAM_KEY = "game_patch_radar_team_v1";
+let team = {code: "", name: ""};        // codice della squadra e il tuo nome, salvati solo su questo dispositivo
+let teamState = null;                    // {members: [nomi], votes: {appid: {nome: "play"|"interest"}}}
+let teamErr = "";
+function loadTeam() { try { const d = JSON.parse(localStorage.getItem(TEAM_KEY) || "null"); if (d && typeof d.code === "string" && typeof d.name === "string") team = {code: d.code, name: d.name}; } catch {} }
+function saveTeam() { try { team.code ? localStorage.setItem(TEAM_KEY, JSON.stringify(team)) : localStorage.removeItem(TEAM_KEY); } catch {} }
+function inTeam() { return !!(team.code && team.name && bridgeUrl()); }
+function teamLeave() { team = {code: "", name: ""}; teamState = null; teamErr = ""; saveTeam(); }
+async function teamApi(path, body, code = team.code) {
+ let r;
+ try { r = await fetch(bridgeUrl() + path, {method: "POST", headers: {"Content-Type": "application/json", Authorization: "Bearer " + code}, body: JSON.stringify(body || {}), cache: "no-store", signal: AbortSignal.timeout(15000)}); }
+ catch { throw new Error("Il ponte non risponde. Controlla la connessione e riprova."); }
+ let d = {}; try { d = await r.json(); } catch {}
+ if (r.status === 401 && team.code && code === team.code && team.name) teamLeave();   // il codice è stato cambiato: bisogna rientrare
+ if (!r.ok) { const e = new Error(d.error || "Errore " + r.status); e.status = r.status; throw e; }
+ return d;
+}
+function setTeamState(d) { teamState = {members: d.members || [], votes: d.votes || {}}; }
+async function teamRefresh() {
+ if (!inTeam()) return;
+ try { setTeamState(await teamApi("/team/state")); teamErr = ""; } catch (e) { teamErr = e.message; }
+ renderMeta(); if ($("team").classList.contains("open")) renderTeam();
+}
+async function teamJoin(code, name) {
+ const d = await teamApi("/team/join", {name}, code);
+ team = {code, name: d.name}; saveTeam(); setTeamState(d); teamErr = "";
+}
+async function teamVote(appid, kind) {
+ const cur = (teamState && teamState.votes[String(appid)] || {})[team.name];
+ try { setTeamState(await teamApi("/team/vote", {name: team.name, appid, kind: cur === kind ? null : kind})); teamErr = ""; }
+ catch (e) { toast(e.message); }
+ renderMeta(); if ($("team").classList.contains("open")) renderTeam();
+}
+const TEAM_KINDS = [["play", "🎮 Ci gioco"], ["interest", "⭐ Mi interessa"]];
+function teamWho(appid) {
+ const row = (teamState && teamState.votes[String(appid)]) || {}, by = k => Object.keys(row).filter(n => row[n] === k);
+ return {play: by("play"), interest: by("interest"), mine: row[team.name] || null};
+}
+function teamSummary(w) {
+ const parts = [];
+ if (w.play.length) parts.push("🎮 " + w.play.join(", "));
+ if (w.interest.length) parts.push("⭐ " + w.interest.join(", "));
+ return parts.join(" · ");
+}
+function teamButtons(appid, cls) {
+ const w = teamWho(appid);
+ return TEAM_KINDS.map(([k, label]) => h("button", {type: "button", class: cls + (w.mine === k ? " on" : ""), "aria-pressed": w.mine === k ? "true" : "false", onclick: () => teamVote(appid, k)}, label));
+}
+/* Nella pagina di un gioco: i tuoi pulsanti e chi, tra gli amici, ci gioca o lo vorrebbe provare */
+function teamChips(el, g) {
+ if (!inTeam() || !teamState) return;
+ el.append(...teamButtons(g.appid, "mchip tmb"));
+ const txt = teamSummary(teamWho(g.appid));
+ if (txt) el.append(h("span", {class: "mchip", title: "Dalla squadra"}, txt));
+}
+function renderTeam() {
+ const box = $("teamBody"); box.innerHTML = "";
+ box.append(h("h2", {}, "👥 Squadra"));
+ if (!bridgeUrl()) { box.append(h("p", {class: "v-note"}, "La squadra funziona con il ponte Cloudflare, che qui non è ancora collegato.")); return; }
+ if (!inTeam()) {
+  box.append(h("p", {class: "v-note"}, "Entra con il codice che ti ha dato chi gestisce l'app e scegli il nome con cui gli amici ti vedono. Il codice e il nome restano salvati solo su questo dispositivo."));
+  const code = h("input", {type: "text", placeholder: "Codice della squadra (es. abcd-efgh-jkmn)", autocomplete: "off", autocapitalize: "none", spellcheck: "false", value: team.code || ""});
+  const name = h("input", {type: "text", placeholder: "Il tuo nome", autocomplete: "nickname", maxlength: "24", value: team.name || ""});
+  const go = h("button", {type: "button", class: "abtn pri", onclick: async () => {
+   const c = code.value.trim(), n = name.value.trim();
+   if (!c || n.length < 2) { msgEl(box, "Scrivi il codice e un nome di almeno due lettere.", false); return; }
+   go.disabled = true;
+   try { await teamJoin(c, n); toast("👥 Sei nella squadra, " + team.name); renderMeta(); renderTeam(); }
+   catch (e) { go.disabled = false; msgEl(box, e.message, false); }
+  }}, "Entra");
+  name.addEventListener("keydown", e => { if (e.key === "Enter") go.click(); });
+  box.append(code, name, h("div", {class: "row-btns"}, go));
+  return;
+ }
+ if (teamErr) box.append(h("p", {class: "nstat errmsg"}, teamErr));
+ const members = teamState ? teamState.members : [];
+ box.append(h("p", {class: "v-note"}, "Sei " + team.name + (members.length ? " · nella squadra: " + members.join(", ") : "") + ". Tocca i pulsanti per dire a quali giochi giochi o che ti interessano."));
+ if (!teamState) { box.append(h("p", {class: "v-note"}, "Carico la squadra…")); return; }
+ const rows = ORDER.map(k => ({g: GAMES[k], w: teamWho(GAMES[k].appid)}))
+  .sort((a, b) => (b.w.play.length * 2 + b.w.interest.length) - (a.w.play.length * 2 + a.w.interest.length));
+ for (const {g, w} of rows) {
+  const top = h("div", {class: "tm-top"}, h("b", {}, g.name + (g.watch ? " 👁" : "")));
+  const p = g.price;
+  if (p && p.final) top.append(h("span", {class: "mchip" + (p.discount > 0 ? " sale" : "")}, p.discount > 0 ? "🏷 −" + p.discount + "% · " + p.final : "💶 " + p.final));
+  if (g.watch && g.target) top.append(h("span", {class: "mchip"}, "🎯 " + euro(g.target)));
+  const row = h("div", {class: "tm-row"}, top);
+  const txt = teamSummary(w);
+  row.append(h("div", {class: "tm-who"}, txt || "Nessuno l'ha ancora scelto."), h("div", {class: "tm-btns"}, ...teamButtons(g.appid, "abtn")));
+  box.append(row);
+ }
+ const link = inviteUrl() + "#squadra=" + encodeURIComponent(team.code);
+ box.append(h("h3", {class: "sec"}, "Invita un amico nella squadra"));
+ box.append(h("p", {class: "v-note"}, "Il link contiene il codice: mandalo solo a chi vuoi in squadra."));
+ box.append(h("div", {class: "row-btns"},
+  mkBtn("🔗 Copia link di invito", async () => { try { await navigator.clipboard.writeText(link); toast("🔗 Link copiato"); } catch { toast("Copia non riuscita"); } }),
+  h("a", {class: "abtn", style: "text-decoration:none", href: "https://wa.me/?text=" + encodeURIComponent("Entra nella nostra squadra su Game Patch Radar: " + link), target: "_blank", rel: "noopener noreferrer"}, "💬 WhatsApp")));
+ box.append(h("div", {class: "row-btns", style: "margin-top:18px"}, mkBtn("↻ Aggiorna", teamRefresh), mkBtn("Esci dalla squadra", () => { if (confirm("Uscire dalla squadra su questo dispositivo? I tuoi voti restano agli amici.")) { teamLeave(); renderMeta(); renderTeam(); } })));
+}
+function openTeam() {
+ renderTeam(); openOv("team");
+ if (inTeam()) teamRefresh();
+}
+$("tClose").addEventListener("click", () => closeOv("team"));
+$("teamLink").addEventListener("click", e => { e.preventDefault(); openTeam(); });
+/* Link di invito (…#squadra=codice): apre la schermata con il codice già scritto, poi toglie il codice dall'indirizzo */
+function teamFromHash() {
+ const m = /^#squadra=([^&]{4,80})$/.exec(location.hash || "");
+ if (!m) return;
+ try { history.replaceState(null, "", location.pathname + location.search); } catch {}
+ let c = ""; try { c = decodeURIComponent(m[1]); } catch { return; }
+ if (inTeam()) return;
+ team = {code: c, name: team.name || ""};   // solo precompilato: si salva quando entri davvero
+ setTimeout(openTeam, 600);
+}
+
 /* ---------- Tema ---------- */
 const THEME_KEY = "game_patch_radar_theme_v1";
 function currentTheme() { try { const t = localStorage.getItem(THEME_KEY); return t === "light" || t === "dark" ? t : "auto"; } catch { return "auto"; } }
@@ -1838,11 +1982,14 @@ loadPending();
 loadPatchPref();
 loadAdmin();
 loadBridge();
+loadTeam();
 loadNotif();
 ensureSelected();
 if (cache[selected]) setStatus("Dati salvati · aggiornamento in corso…");
 render();
 refreshAll();
+teamRefresh();
+teamFromHash();
 maybeWelcome(returning);
 </script>
 </body>

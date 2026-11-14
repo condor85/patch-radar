@@ -59,5 +59,10 @@ Poi sul telefono: ⚙ → Amministratore → inserisci la password. Da quel mome
 - Gli errori verso l'app sono generici: token e dettagli interni non vengono mai mostrati.
 - Se non vuoi usare il ponte, lascia `adminApi` vuoto: l'app torna al vecchio metodo con il token personale.
 
+## Squadra
+Il ponte tiene anche l'archivio privato della squadra (un Durable Object chiamato `TEAM`, dichiarato in `wrangler.toml`, nessun costo sul piano gratuito).
+L'amministratore crea il codice con `/team/setup`; gli amici entrano con `/team/join` e votano con `/team/vote` (il codice sta nell'intestazione `Authorization`). Dopo 8 codici sbagliati l'indirizzo viene bloccato per 15 minuti.
+Se il ponte è stato creato a mano dal pannello Cloudflare, per questa funzione va ripubblicato con il metodo automatico (o `npx wrangler deploy`).
+
 ## Test
 `node tests/worker.test.mjs`
