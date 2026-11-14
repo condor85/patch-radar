@@ -136,8 +136,19 @@ def load_games():
         if appid in seen:
             continue
         seen.add(appid)
-        out.append({"appid": appid, "name": (g.get("name") or "").strip()})
+        entry = {"appid": appid, "name": (g.get("name") or "").strip()}
+        if g.get("watch") is True:  # gioco «da tenere d'occhio»: solo patch importanti e avviso di prezzo
+            entry["watch"] = True
+            entry["target"] = clean_target(g.get("target"))
+        out.append(entry)
     return out
+
+
+def clean_target(v):
+    """Soglia di prezzo in euro (numero positivo, 2 decimali) oppure None."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not (0 < v <= 10000):
+        return None
+    return round(float(v), 2)
 
 
 def store_details(appid):
@@ -150,6 +161,8 @@ def store_details(appid):
     price = None
     if po:
         price = {"final": po.get("final_formatted") or "", "initial": po.get("initial_formatted") or "", "discount": int(po.get("discount_percent") or 0)}
+        if isinstance(po.get("final"), int) and not isinstance(po.get("final"), bool):
+            price["cents"] = po["final"]
     return {"name": data.get("name", ""), "image": data.get("header_image", ""), "price": price}
 
 
@@ -374,6 +387,21 @@ def classify(items):
         it["labels"] = labels_of(it) if it["patch"] else []
 
 
+MAJOR_TITLE_RE = re.compile(r"\bmajor update\b|\bseason \d|\bexpansion\b|(?<![\d.])v?\d+\.0(?:\.0)?(?![\d.])", re.I)
+
+
+def is_major(item):
+    """Patch «grossa»: porta contenuti nuovi o cambi di bilanciamento (etichette), oppure ha nel titolo una versione x.0,
+    una stagione o un'espansione. Hotfix e sole correzioni non lo sono."""
+    if not item.get("patch"):
+        return False
+    labels = item.get("labels") or []
+    if "new" in labels or "balance" in labels:
+        return True
+    title = item.get("title") or ""
+    return bool(MAJOR_TITLE_RE.search(title)) and not re.search(r"hotfix|hot fix", title, re.I)
+
+
 def merge_history(items, old_items):
     """Aggiunge agli annunci appena scaricati quelli vecchi che Steam non restituisce più."""
     have = {str(i.get("gid")) for i in items}
@@ -549,13 +577,19 @@ def send_outbox():
     return len(items)
 
 
-def notify(name, item, appid):
-    """Nuova pubblicazione. Le patch vere vanno al canale del gioco; eventi e annunci a un canale a parte."""
+def notify(name, item, appid, watch=False):
+    """Nuova pubblicazione. Le patch vere vanno al canale del gioco; eventi e annunci a un canale a parte.
+    Le patch grosse vanno anche al canale «-major» (per chi vuole solo quelle). Un gioco osservato (watch) manda
+    solo le patch grosse."""
     body = (item.get("title") or "Nuova pubblicazione su Steam") + ("\n" + item["summary"][:300] if item.get("summary") else "")
     if item.get("patch"):
         # un canale per tutti i giochi (compatibilità) e uno per ogni gioco
-        enqueue([NTFY_TOPIC, f"{NTFY_TOPIC}-{appid}"], f"{name}: nuovo aggiornamento", body, ["video_game"])
-    else:
+        topics = [] if watch else [NTFY_TOPIC, f"{NTFY_TOPIC}-{appid}"]
+        if is_major(item):
+            topics.append(f"{NTFY_TOPIC}-{appid}-major")
+        if topics:
+            enqueue(topics, f"{name}: nuovo aggiornamento", body, ["video_game"])
+    elif not watch:
         enqueue([f"{NTFY_TOPIC}-{appid}-news"], f"{name}: novità", body, ["loudspeaker"])
 
 
@@ -564,16 +598,30 @@ def notify_sale(name, appid, price):
     enqueue([f"{NTFY_TOPIC}-{appid}-sale"], f"{name} è in sconto", line, ["moneybag"], f"https://store.steampowered.com/app/{appid}/")
 
 
+def price_reached(price, target):
+    """True se il prezzo attuale è uguale o inferiore alla soglia (in euro)."""
+    return bool(price and target and isinstance(price.get("cents"), int) and price["cents"] <= round(target * 100))
+
+
+def notify_target(name, appid, price, target):
+    soglia = f"{target:.2f}".replace(".", ",")
+    line = f"{price['final']} (la tua soglia: {soglia} €)"
+    enqueue([f"{NTFY_TOPIC}-{appid}-target"], f"{name} ha raggiunto il prezzo che cercavi", line, ["moneybag"], f"https://store.steampowered.com/app/{appid}/")
+
+
 def send_digest(games, since):
     """Riepilogo serale: una notifica per gioco con le patch uscite dall'ultimo riepilogo."""
     for g in games:
         fresh = [i for i in g["items"] if i.get("patch") and (i.get("date") or 0) > since]
         if not fresh:
             continue
-        n = len(fresh)
-        title = f"{g['name']}: {n} aggiornament{'o' if n == 1 else 'i'} oggi"
-        enqueue([f"{NTFY_TOPIC}-{g['appid']}-digest"], title, "\n".join("• " + (i.get("title") or "Aggiornamento") for i in fresh[:6]), ["newspaper"])
-        print(f"RIEPILOGO {g['name']}: {n}")
+        for suffix, items in (("digest", [] if g.get("watch") else fresh), ("digest-major", [i for i in fresh if is_major(i)])):
+            if not items:
+                continue
+            n = len(items)
+            title = f"{g['name']}: {n} aggiornament{'o' if n == 1 else 'i'} oggi"
+            enqueue([f"{NTFY_TOPIC}-{g['appid']}-{suffix}"], title, "\n".join("• " + (i.get("title") or "Aggiornamento") for i in items[:6]), ["newspaper"])
+            print(f"RIEPILOGO {g['name']} ({suffix}): {n}")
 
 
 def main():
@@ -611,7 +659,10 @@ def main():
             print(f"{name}: ERRORE {e} (tengo i dati precedenti)", file=sys.stderr)
             items = o.get("items", [])
         classify(items)
-        games.append({"appid": g["appid"], "name": name, "image": image, "price": price, "items": items})
+        entry = {"appid": g["appid"], "name": name, "image": image, "price": price, "items": items}
+        if g.get("watch"):
+            entry["watch"], entry["target"] = True, g.get("target")
+        games.append(entry)
     add_summaries(games, old)
     for g in games:
         o = old.get(str(g["appid"]))
@@ -621,8 +672,11 @@ def main():
         fresh = [i for i in g["items"] if str(i["gid"]) not in known]
         for it in fresh[:5]:
             print(f"NUOVO {g['name']}: {it.get('title')} ({'patch' if it.get('patch') else 'annuncio'})")
-            notify(g["name"], it, g["appid"])
+            notify(g["name"], it, g["appid"], bool(g.get("watch")))
         pr, po = g.get("price"), o.get("price") if "price" in o else False
+        if g.get("watch") and g.get("target") and po is not False and price_reached(pr, g["target"]) and not price_reached(po, g["target"]):
+            print(f"SOGLIA {g['name']}: {pr['final']} (soglia {g['target']})")
+            notify_target(g["name"], g["appid"], pr, g["target"])
         if po is not False and pr and pr["discount"] >= 10 and pr["discount"] > ((po or {}).get("discount") or 0):
             print(f"SALDO {g['name']}: -{pr['discount']}%")
             notify_sale(g["name"], g["appid"], pr)

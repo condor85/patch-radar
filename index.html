@@ -65,7 +65,14 @@ footer a{color:var(--link)}
 .chips{display:flex;flex-wrap:wrap;gap:6px;flex:1 1 100%}
 .chip{border:1px solid var(--green-line);background:var(--green-bg);color:var(--green);border-radius:99px;padding:5px 10px;font-size:12px;font-weight:700}
 .toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;pointer-events:none;background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-line);border-radius:12px;padding:10px 14px;font-size:13px;font-weight:650;z-index:60;transition:.3s;max-width:calc(100vw - 32px)}
-.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.toast-act{margin-left:12px;border:1px solid var(--green-line);background:transparent;color:var(--green-text);border-radius:8px;padding:3px 10px;font:inherit;font-weight:800;cursor:pointer}
+.diff ul{margin:6px 0 0 18px;padding:0;font-size:13px}
+.diff li{margin:3px 0}
+.diff .more-n{font-size:12px;color:var(--muted);margin-top:4px}
+.bstat{font-size:13px;font-weight:650;margin:2px 0 10px}
+.nrow .mini{flex:0 0 auto;font-size:11px;padding:4px 9px}
+.nrow .tagw{flex:0 0 auto;font-size:11px;color:var(--muted)}
 .by{font-size:11px;font-weight:650;color:var(--muted);margin-left:6px;letter-spacing:.3px;white-space:nowrap}
 .rich h4{margin:12px 0 4px;font-size:calc(14px*var(--tz,1));line-height:1.3;color:var(--accent)}
 .rich h4:first-child{margin-top:0}
@@ -322,7 +329,7 @@ function setGames(list) {
  const g = {};
  for (const x of list) {
   const k = String(x.appid);
-  g[k] = {name: x.name || ("Gioco " + k), appid: x.appid, image: x.image || "", price: x.price || null, players: x.players || null, store: "https://store.steampowered.com/app/" + x.appid + "/"};
+  g[k] = {name: x.name || ("Gioco " + k), appid: x.appid, image: x.image || "", price: x.price || null, players: x.players || null, watch: x.watch === true, target: typeof x.target === "number" ? x.target : null, store: "https://store.steampowered.com/app/" + x.appid + "/"};
  }
  GAMES = g; ORDER = list.map(x => String(x.appid)).filter((k, i, a) => a.indexOf(k) === i);
 }
@@ -332,18 +339,23 @@ function loadHidden() { try { hidden = JSON.parse(localStorage.getItem(HIDDEN_KE
 function saveHidden() { try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(hidden)); } catch {} }
 setGames(DEFAULT_GAMES);
 const PENDING_KEY = "game_patch_radar_pending_v1";
-let pending = {add: [], remove: []};
+let pending = {add: [], remove: [], watch: []};
 function loadPending() { try { pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "null") || pending; } catch {} }
 function savePending() { try { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch {} }
 function applyPending(list) {
  const now = Date.now(), has = new Set(list.map(g => String(g.appid)));
  pending.add = (pending.add || []).filter(g => now - g.ts < 20 * 60000 && !has.has(String(g.appid)));
  pending.remove = (pending.remove || []).filter(g => now - g.ts < 20 * 60000 && has.has(String(g.id)));
+ // cambi di «da osservare» fatti da qui: restano validi finché il sito non li ha ripubblicati
+ const sameWatch = (g, w) => (g.watch === true) === w.watch && (w.watch ? (g.target ?? null) === (w.target ?? null) : true);
+ pending.watch = (pending.watch || []).filter(w => now - w.ts < 20 * 60000 && list.some(g => String(g.appid) === String(w.id) && !sameWatch(g, w)));
  savePending();
  const gone = new Set(pending.remove.map(g => String(g.id)));
- return list.filter(g => !gone.has(String(g.appid))).concat(pending.add.map(g => ({appid: g.appid, name: g.name, image: ""})));
+ const ww = new Map(pending.watch.map(w => [String(w.id), w]));
+ return list.filter(g => !gone.has(String(g.appid))).map(g => { const w = ww.get(String(g.appid)); return w ? {...g, watch: w.watch, target: w.watch ? w.target : null} : g; })
+  .concat(pending.add.map(g => ({appid: g.appid, name: g.name, image: "", watch: g.watch === true, target: g.target ?? null})));
 }
-function currentList() { return ORDER.map(k => ({appid: GAMES[k].appid, name: GAMES[k].name, image: GAMES[k].image, price: GAMES[k].price, players: GAMES[k].players})); }
+function currentList() { return ORDER.map(k => ({appid: GAMES[k].appid, name: GAMES[k].name, image: GAMES[k].image, price: GAMES[k].price, players: GAMES[k].players, watch: GAMES[k].watch, target: GAMES[k].target})); }
 const STORE_KEY = "game_patch_radar_v3";
 const REFRESH_MS = 30 * 60 * 1000;
 const PREVIEW_CHARS = 450;
@@ -422,9 +434,15 @@ function updateTitle() {
  try { if (navigator.setAppBadge) (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {}); } catch {}
 }
 let toastTimer;
-function toast(msg) {
- const t = $("toast"); t.textContent = msg; t.classList.add("show");
- clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 7000);
+function toast(msg, action) {
+ const t = $("toast"); t.textContent = msg;
+ if (action) {
+  const b = document.createElement("button"); b.type = "button"; b.className = "toast-act"; b.textContent = action.label;
+  b.addEventListener("click", () => { t.classList.remove("show"); clearTimeout(toastTimer); action.run(); });
+  t.append(b);
+ }
+ t.classList.add("show");
+ clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), action ? 10000 : 7000);
 }
 function plural(n) { return n + (n === 1 ? " nuovo aggiornamento" : " nuovi aggiornamenti"); }
 function renderNav() {
@@ -440,7 +458,7 @@ function renderNav() {
   const n = newItems(k).length;
   const b = document.createElement("button"); b.type = "button";
   b.className = "game" + (k === selected && !home ? " active" : "") + (n ? " has-new" : "");
-  b.append(coverImg(GAMES[k].appid, "cover", GAMES[k].image, GAMES[k].name), document.createTextNode(GAMES[k].name));
+  b.append(coverImg(GAMES[k].appid, "cover", GAMES[k].image, GAMES[k].name), document.createTextNode(GAMES[k].name + (GAMES[k].watch ? " 👁" : "")));
   if (n) { const t = document.createElement("span"); t.className = "newtxt"; t.textContent = n + (n === 1 ? " nuovo" : " nuovi"); b.append(t); }
   b.addEventListener("click", () => selectGame(k));
   list.append(b);
@@ -487,7 +505,7 @@ function selectGame(k) {
 function persistable() {
  const c = {}; for (const [k, v] of Object.entries(cache)) c[k] = v.slice(0, 20).map(({it, ...r}) => r);
  const tc = {}; for (const [k, v] of Object.entries(trCache)) if (v.src !== "gemini") tc[k] = v;
- return {cache: c, trCache: tc, games: Object.values(GAMES).map(g => ({appid: g.appid, name: g.name, image: g.image, price: g.price}))};
+ return {cache: c, trCache: tc, games: Object.values(GAMES).map(g => ({appid: g.appid, name: g.name, image: g.image, price: g.price, watch: g.watch, target: g.target}))};
 }
 function save() {
  const d = persistable();
@@ -751,6 +769,34 @@ function warnEl() {
  w.textContent = "⚠ Il testo ricevuto da Steam potrebbe essere incompleto: apri la pubblicazione su Steam per leggerla tutta.";
  return w;
 }
+/* Confronto con la patch precedente: le voci del testo che nella patch prima non c'erano */
+const normLine = l => l.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+function patchLines(it) { return fullText(it).split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#")).map(l => l.replace(/^[•·\s]+/, "")).filter(l => l.length >= 12); }
+function previousPatch(key, item) {
+ let best = null;
+ for (const it of cache[key] || []) if (it !== item && isPatchItem(it) && (it.date || 0) < (item.date || 0) && (!best || it.date > best.date)) best = it;
+ return best;
+}
+function changesSince(key, item) {
+ if (!isPatchItem(item)) return null;
+ const prev = previousPatch(key, item);
+ if (!prev || (item.date || 0) - (prev.date || 0) > 21 * 86400) return null;
+ const before = new Set(patchLines(prev).map(normLine)), cur = patchLines(item);
+ if (cur.length < 3 || !cur.some(l => before.has(normLine(l)))) return null;   // niente voci in comune: non c'è nulla da confrontare
+ return {prev, fresh: cur.filter(l => !before.has(normLine(l))), total: cur.length};
+}
+function changesBox(key, item) {
+ const c = changesSince(key, item); if (!c) return null;
+ const v = versionOf(c.prev.title), label = v ? "v" + v : dateLabel(c.prev.date);
+ const box = h("div", {class: "sum diff"}, h("b", {}, "🆕 Novità rispetto a " + label));
+ if (!c.fresh.length) { box.append(h("p", {class: "more-n"}, "Nessuna voce nuova: il contenuto è già nella patch precedente.")); return box; }
+ const ul = h("ul", {});
+ for (const l of c.fresh.slice(0, 8)) ul.append(h("li", {}, l.length > 220 ? l.slice(0, 217) + "…" : l));
+ box.append(ul);
+ if (c.fresh.length > 8) box.append(h("p", {class: "more-n"}, "e altre " + (c.fresh.length - 8) + " voci nel testo completo"));
+ box.append(h("p", {class: "more-n"}, c.total - c.fresh.length + " voci su " + c.total + " erano già nella patch precedente."));
+ return box;
+}
 function summaryBox(item) {
  const sm = h("div", {class: "sum"}, h("b", {}, "📝 In breve"), item.summary);
  return sm;
@@ -767,6 +813,7 @@ function renderViewer() {
  inner.append(h("span", {class: "date"}, dateLabel(item.date) + " · " + game.name + pos), h("h2", {}, (tr ? tr.title : item.title) || "Aggiornamento"));
  const lb = labelsEl(item); if (lb) inner.append(lb);
  if (item.summary) inner.append(summaryBox(item));
+ const diff = changesBox(key, item); if (diff) inner.append(diff);
  inner.append(t);
  if (item.truncated) inner.append(warnEl());
  if (tr) inner.append(h("div", {class: "v-note"}, "Traduzione automatica (" + (tr.src === "gemini" ? "Gemini" : "Google Translate") + ") — può contenere imprecisioni."));
@@ -856,22 +903,24 @@ async function searchGames(term) {
 function msgEl(box, text, ok) { let m = box.querySelector(".msg"); if (!m) { m = h("p", {class: "msg"}); box.prepend(m); } m.className = "msg " + (ok ? "okmsg" : "errmsg"); m.textContent = text; }
 function afterGamesChange() { ensureSelected(); render(); renderAdmin(); refreshAll(); }
 
-async function adminAdd(g) {
+async function adminAdd(g, undoable = true) {
  // I risultati di ricerca passano da proxy di terzi: appid e nome si controllano prima di scriverli nel repository
  const appid = Number(g.appid);
  if (!Number.isInteger(appid) || appid <= 0) throw new Error("Numero app Steam non valido.");
  const name = String(g.name || "").replace(/[<>\u0000-\u001f\u007f]/g, "").trim().slice(0, 80);
  await editFile("games.json", o => { o.games = o.games || []; if (!o.games.some(x => Number(x.appid) === appid)) o.games.push(name ? {appid, name} : {appid}); return o; }, "Aggiungi " + (name || appid));
+ pending.remove = (pending.remove || []).filter(x => String(x.id) !== String(appid));
  pending.add.push({appid, name, ts: Date.now()}); savePending();
  setGames(applyPending(currentList()));
- toast("✓ Gioco aggiunto. Per tutti gli altri compare in circa un minuto.");
+ toast("✓ Gioco aggiunto. Per tutti gli altri compare in circa un minuto.", undoable ? {label: "Annulla", run: () => adminRemove({appid, name: name || String(appid)}, false).catch(e => toast(e.message))} : null);
  afterGamesChange();
 }
-async function adminRemove(g) {
+async function adminRemove(g, undoable = true) {
  await editFile("games.json", o => { o.games = (o.games || []).filter(x => Number(x.appid) !== Number(g.appid)); return o; }, "Rimuovi " + g.name);
+ pending.add = (pending.add || []).filter(x => String(x.appid) !== String(g.appid));
  pending.remove.push({id: Number(g.appid), ts: Date.now()}); savePending();
  setGames(applyPending(currentList()));
- toast("✓ Gioco eliminato dall'app.");
+ toast("✓ Gioco eliminato dall'app.", undoable ? {label: "Annulla", run: () => adminAdd({appid: g.appid, name: g.name}, false).catch(e => toast(e.message))} : null);
  afterGamesChange();
 }
 async function adminTopic() {
@@ -896,6 +945,73 @@ async function bridge(path, body) {
  if (!r.ok) throw new Error(d.error || "Errore " + r.status);
  return d;
 }
+/* Operazioni di amministrazione tramite ponte, usate anche dall'«Annulla» */
+function localAdd(game) {
+ pending.remove = (pending.remove || []).filter(x => String(x.id) !== String(game.appid));
+ pending.add.push({appid: game.appid, name: game.name, watch: game.watch === true, target: game.target ?? null, ts: Date.now()}); savePending();
+ setGames(applyPending(currentList()));
+}
+function localRemove(appid) {
+ pending.add = (pending.add || []).filter(x => String(x.appid) !== String(appid));
+ pending.remove.push({id: Number(appid), ts: Date.now()}); savePending();
+ setGames(applyPending(currentList()));
+}
+async function bridgeAdd(game, opts = {}) {
+ const body = {appid: game.appid};
+ if (game.watch) { body.watch = true; if (game.target != null) body.target = game.target; }
+ const d = await bridge("/add", body);
+ if (d.added) localAdd({...d.game, watch: game.watch === true, target: game.watch ? (game.target ?? null) : null});
+ const undo = d.added && opts.undoable !== false ? {label: "Annulla", run: () => bridgeRemove(d.game, {undoable: false}).catch(e => toast(e.message))} : null;
+ toast(d.added ? "✓ " + d.game.name + " aggiunto. Per tutti compare in circa un minuto." : "Il gioco c'era già.", undo);
+ afterGamesChange();
+ return d;
+}
+async function bridgeRemove(game, opts = {}) {
+ const keep = {appid: game.appid, name: game.name, watch: game.watch === true, target: game.target ?? null};
+ await bridge("/remove", {appid: game.appid});
+ localRemove(game.appid);
+ const undo = opts.undoable !== false ? {label: "Annulla", run: () => bridgeAdd(keep, {undoable: false}).catch(e => toast(e.message))} : null;
+ toast("✓ Gioco eliminato dall'app.", undo);
+ afterGamesChange();
+}
+async function bridgeWatch(game, watch, target) {
+ await bridge("/watch", {appid: game.appid, watch, target});
+ pending.watch = (pending.watch || []).filter(w => String(w.id) !== String(game.appid));
+ pending.watch.push({id: Number(game.appid), watch, target: watch ? target : null, ts: Date.now()}); savePending();
+ setGames(applyPending(currentList()));
+ toast(watch ? "👁 " + game.name + ": solo patch importanti" + (target ? " e avviso sotto " + euro(target) : "") : "✓ " + game.name + ": di nuovo tutte le patch");
+ afterGamesChange();
+ if (notifPref.on) syncNotif().catch(() => {});
+}
+function euro(n) { return Number(n).toLocaleString("it-IT", {minimumFractionDigits: 2, maximumFractionDigits: 2}) + " €"; }
+function parseEuro(text) {
+ const t = String(text == null ? "" : text).trim().replace(",", ".");
+ if (!t) return null;
+ const n = Number(t);
+ return Number.isFinite(n) && n > 0 && n <= 10000 ? Math.round(n * 100) / 100 : NaN;
+}
+/* Stato del ponte: raggiungibile, token GitHub valido, giorni alla scadenza */
+function describeBridge(d) {
+ if (!d.ok) return ["err", "🔴 " + (d.error || "Il ponte non funziona.")];
+ if (typeof d.daysLeft === "number" && d.daysLeft < 0) return ["err", "🔴 Il token GitHub del ponte è scaduto: creane uno nuovo e aggiornalo su Cloudflare."];
+ if (typeof d.daysLeft === "number" && d.daysLeft <= 14) return ["warn", "🟡 Ponte attivo, ma il token GitHub scade tra " + (d.daysLeft === 0 ? "meno di un giorno" : d.daysLeft + (d.daysLeft === 1 ? " giorno" : " giorni")) + ": creane uno nuovo e aggiornalo su Cloudflare."];
+ return ["ok", "🟢 Ponte attivo" + (typeof d.daysLeft === "number" ? " · il token GitHub scade tra " + d.daysLeft + " giorni" : " · il token GitHub funziona") + "."];
+}
+const BRIDGE_CHECK_KEY = "game_patch_radar_bridgecheck_v1";
+/* Una volta al giorno, se hai già fatto l'accesso, controlla in silenzio il ponte e avvisa solo se serve */
+async function checkBridgeQuiet() {
+ if (!bridgePw || !bridgeUrl()) return;
+ try {
+  const last = Number(localStorage.getItem(BRIDGE_CHECK_KEY)) || 0;
+  if (Date.now() - last < 86400000) return;
+  localStorage.setItem(BRIDGE_CHECK_KEY, String(Date.now()));
+ } catch {}
+ try {
+  const d = await bridge("/status");
+  const [lvl, text] = describeBridge(d);
+  if (lvl !== "ok") toast(text.replace(/^\S+\s/, "⚠ Ponte: "));
+ } catch {}
+}
 async function renderBridgeAdmin() {
  const box = $("adminBox"); box.innerHTML = "";
  if (!bridgePw) {
@@ -910,17 +1026,23 @@ async function renderBridgeAdmin() {
   box.append(h("p", {}, "Inserisci la password dell'amministratore per aggiungere o togliere giochi. Resta salvata solo su questo dispositivo."), inp, h("div", {class: "row"}, go));
   return;
  }
+ const stat = h("p", {class: "bstat"}, "Controllo il ponte…");
+ box.append(stat);
+ bridge("/status").then(d => { const [lvl, text] = describeBridge(d); stat.className = "bstat " + (lvl === "ok" ? "okmsg" : lvl === "warn" ? "" : "errmsg"); if (lvl === "warn") stat.style.color = "var(--warn)"; stat.textContent = text; })
+  .catch(e => { stat.className = "bstat errmsg"; stat.textContent = "🔴 " + e.message; });
  box.append(h("h4", {}, "Aggiungi un gioco"));
  const q = h("input", {type: "search", placeholder: "Nome del gioco o link Steam", autocomplete: "off", enterkeyhint: "search"});
  const res = h("div", {});
+ const watchChk = h("input", {type: "checkbox"});
+ const targetInp = h("input", {type: "text", inputmode: "decimal", placeholder: "Avvisami sotto (€), facoltativo", autocomplete: "off", disabled: "disabled"});
+ watchChk.addEventListener("change", () => { targetInp.disabled = !watchChk.checked; });
+ const watchRow = h("label", {class: "tgl", style: "margin:8px 0;display:flex"}, watchChk, "👁 Solo da tenere d'occhio: avvisi solo per patch importanti e prezzo");
  const add = async (g, btn) => {
+  const target = watchChk.checked ? parseEuro(targetInp.value) : null;
+  if (Number.isNaN(target)) { msgEl(box, "Prezzo non valido: scrivi un importo in euro, per esempio 19,99.", false); return; }
   btn.disabled = true;
-  try {
-   const d = await bridge("/add", {appid: g.appid});
-   if (d.added) { pending.add.push({appid: d.game.appid, name: d.game.name, ts: Date.now()}); savePending(); setGames(applyPending(currentList())); }
-   toast(d.added ? "✓ " + d.game.name + " aggiunto. Per tutti compare in circa un minuto." : "Il gioco c'era già.");
-   afterGamesChange();
-  } catch (e) { btn.disabled = false; msgEl(box, e.message, false); }
+  try { await bridgeAdd({appid: g.appid, watch: watchChk.checked, target}); }
+  catch (e) { btn.disabled = false; msgEl(box, e.message, false); }
  };
  const row = (g, has) => h("div", {class: "row"}, h("span", {class: "nm"}, g.name), has ? h("span", {}, "già presente") : h("button", {class: "abtn", type: "button", onclick: e => add(g, e.target)}, "+ Aggiungi"));
  const doSearch = async () => {
@@ -936,17 +1058,24 @@ async function renderBridgeAdmin() {
   } catch (e) { res.innerHTML = ""; msgEl(box, e.message, false); }
  };
  q.addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
- box.append(q, h("div", {class: "row"}, h("button", {class: "abtn pri", type: "button", onclick: doSearch}, "🔍 Cerca")), res);
+ box.append(q, h("div", {class: "row"}, h("button", {class: "abtn pri", type: "button", onclick: doSearch}, "🔍 Cerca")), watchRow, targetInp, res);
  box.append(h("h4", {}, "Giochi dell'app (per tutti)"));
  for (const g of currentList()) {
-  box.append(h("div", {class: "row"}, h("span", {class: "nm"}, g.name), h("button", {class: "abtn danger", type: "button", onclick: async e => {
+  const eye = h("button", {class: "abtn", type: "button", title: g.watch ? "Torna a seguire tutte le patch" : "Tieni d'occhio: solo patch importanti e avviso di prezzo", onclick: async e => {
+   let target = null;
+   if (!g.watch || e.shiftKey) {
+    const ans = prompt("Avvisami quando il prezzo di «" + g.name + "» scende sotto (in euro). Lascia vuoto per non avere avvisi di prezzo.", g.target ? String(g.target).replace(".", ",") : "");
+    if (ans === null) return;
+    target = parseEuro(ans);
+    if (Number.isNaN(target)) { msgEl(box, "Prezzo non valido: scrivi un importo in euro, per esempio 19,99.", false); return; }
+   }
+   e.target.disabled = true;
+   try { await bridgeWatch(g, g.watch ? false : true, target); } catch (err) { e.target.disabled = false; msgEl(box, err.message, false); }
+  }}, g.watch ? "👁 Smetti" : "👁 Osserva");
+  box.append(h("div", {class: "row"}, h("span", {class: "nm"}, g.name + (g.watch ? " 👁" + (g.target ? " (sotto " + euro(g.target) + ")" : "") : "")), eye, h("button", {class: "abtn danger", type: "button", onclick: async e => {
    if (!confirm("Eliminare «" + g.name + "» dall'app per tutti?")) return;
    e.target.disabled = true;
-   try {
-    await bridge("/remove", {appid: g.appid});
-    pending.remove.push({id: Number(g.appid), ts: Date.now()}); savePending(); setGames(applyPending(currentList()));
-    toast("✓ Gioco eliminato dall'app."); afterGamesChange();
-   } catch (err) { e.target.disabled = false; msgEl(box, err.message, false); }
+   try { await bridgeRemove(g); } catch (err) { e.target.disabled = false; msgEl(box, err.message, false); }
   }}, "🗑 Elimina")));
  }
  box.append(h("h4", {}, "Notifiche"));
@@ -1165,7 +1294,7 @@ function buildHomeCard(entry, list, idx) {
  const ft = fullText(item);
  const text = item.summary || (ft.replace(/\s+/g, " ").slice(0, 240) + (ft.length > 240 ? "…" : ""));
  const body = h("div", {class: "hbody"},
-  h("div", {class: "htop"}, h("span", {}, h("span", {class: "gname"}, game.name), fresh ? " " : "", fresh ? h("span", {class: "tag new"}, n > 1 ? n + " NUOVE" : "NUOVA") : ""),
+  h("div", {class: "htop"}, h("span", {}, h("span", {class: "gname"}, game.name + (game.watch ? " 👁" : "")), fresh ? " " : "", fresh ? h("span", {class: "tag new"}, n > 1 ? n + " NUOVE" : "NUOVA") : ""),
    h("span", {class: "date", title: dateLabel(item.date)}, agoLabel(item.date) + (ver ? " · v" + ver : ""))),
   h("h3", {}, (item.it && item.it.title) || item.title || "Aggiornamento"));
  const lb = labelsEl(item); if (lb) body.append(lb);
@@ -1246,6 +1375,11 @@ function renderMeta() {
  const el = $("meta"); el.innerHTML = "";
  if (home || crossGame() || !GAMES[selected]) return;
  const g = GAMES[selected], p = g.price;
+ if (g.watch) {
+  const hit = g.target && p && typeof p.cents === "number" && p.cents <= Math.round(g.target * 100);
+  el.append(h("span", {class: "mchip", title: "Da tenere d'occhio: avvisi solo per le patch importanti" + (g.target ? " e quando il prezzo scende sotto " + euro(g.target) : "")},
+   "👁 Osservato" + (g.target ? " · 🎯 " + euro(g.target) + (hit ? " ✓ raggiunto" : "") : "")));
+ }
  if (p && p.final) {
   const sale = p.discount > 0;
   el.append(h("a", {class: "mchip" + (sale ? " sale" : ""), href: g.store, target: "_blank", rel: "noopener noreferrer", title: "Apri la pagina Steam"},
@@ -1321,6 +1455,8 @@ async function doRefresh(manual) {
  snapshot = await loadSnapshot();
  if (snapshot && snapshot.games.length) { setGames(applyPending(snapshot.games)); save(); }
  ensureSelected();
+ syncNotifIfChanged().catch(() => {});
+ checkBridgeQuiet();
  const [errors] = await Promise.all([Promise.all(visibleKeys().map(loadGame)), loadCheck()]);
  baselineSeen();
  const onHome = isHome();   // nella schermata principale conta solo se nessun gioco si è caricato
@@ -1365,13 +1501,13 @@ function setTopicLink() { renderNotif(); if (notifPref.on) syncNotif().catch(() 
 /* Notifiche push: l'app si iscrive da sola al servizio gratuito ntfy.sh (Web Push), senza installare altre app. */
 const NOTIF_KEY = "game_patch_radar_notif_v1";
 const NTFY = "https://ntfy.sh";
-/* off = giochi senza avvisi; mode = «now» (subito) o «digest» (riepilogo serale); news = anche annunci ed eventi; sale = saldi; quiet = ore senza suono */
-let notifPref = {on: false, off: [], mode: "now", news: false, sale: false, quiet: {on: false, from: "23:00", to: "08:00"}};
+/* major = giochi di cui si vogliono solo le patch grosse; off = giochi senza avvisi; mode = «now» (subito) o «digest» (riepilogo serale); news = anche annunci ed eventi; sale = saldi; quiet = ore senza suono */
+let notifPref = {on: false, off: [], major: [], mode: "now", news: false, sale: false, quiet: {on: false, from: "23:00", to: "08:00"}};
 let notifMsg = null;
 function loadNotif() {
  try {
   const d = JSON.parse(localStorage.getItem(NOTIF_KEY) || "null"), q = (d && d.quiet) || {};
-  if (d) notifPref = {on: !!d.on, off: d.off || [], mode: d.mode === "digest" ? "digest" : "now", news: !!d.news, sale: !!d.sale,
+  if (d) notifPref = {on: !!d.on, off: d.off || [], major: Array.isArray(d.major) ? d.major : [], mode: d.mode === "digest" ? "digest" : "now", news: !!d.news, sale: !!d.sale,
    quiet: {on: !!q.on, from: q.from || "23:00", to: q.to || "08:00"}};
  } catch {}
 }
@@ -1393,10 +1529,12 @@ function topicList() {
  const out = [];
  for (const k of ORDER) {
   if (notifPref.off.includes(k)) continue;
-  const id = CFG.ntfyTopic + "-" + GAMES[k].appid;
-  out.push(notifPref.mode === "digest" ? id + "-digest" : id);
-  if (notifPref.news) out.push(id + "-news");
+  const g = GAMES[k], id = CFG.ntfyTopic + "-" + g.appid;
+  const major = g.watch || notifPref.major.includes(k);   // giochi osservati: sempre e solo patch grosse
+  out.push((notifPref.mode === "digest" ? id + "-digest" : id) + (major ? "-major" : ""));
+  if (notifPref.news && !g.watch) out.push(id + "-news");
   if (notifPref.sale) out.push(id + "-sale");
+  if (g.watch && g.target) out.push(id + "-target");   // avviso quando il prezzo scende sotto la soglia
  }
  return out;
 }
@@ -1405,6 +1543,12 @@ async function postPrefs() {
  try { const reg = await navigator.serviceWorker.ready; if (reg.active) reg.active.postMessage({type: "prefs", quiet: notifPref.quiet}); } catch {}
 }
 /* Allinea il servizio con le scelte fatte (si richiama a ogni apertura per tenere valida l'iscrizione). */
+let syncedTopics = "";
+async function syncNotifIfChanged() {   // dopo un aggiornamento dei giochi: se gli argomenti da seguire sono cambiati, riallinea
+ if (!notifSupported() || !notifPref.on || !CFG.ntfyTopic || Notification.permission !== "granted") return;
+ const now = topicList().join("|");
+ if (now !== syncedTopics) await syncNotif();
+}
 async function syncNotif() {
  if (!notifSupported()) return;
  if (notifPref.on && !CFG.ntfyTopic) throw new Error("Notifiche non ancora configurate");
@@ -1420,6 +1564,7 @@ async function syncNotif() {
  const j = sub.toJSON();
  const r = await fetch(NTFY + "/v1/webpush", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({endpoint: j.endpoint, auth: j.keys.auth, p256dh: j.keys.p256dh, topics})});
  if (!r.ok) throw new Error("Il servizio notifiche ha risposto " + r.status);
+ syncedTopics = topics.join("|");
  await postPrefs();
 }
 async function setMaster(on) {
@@ -1458,6 +1603,7 @@ $("bellBtn").addEventListener("click", async () => {
  toast(on ? "🔔 Notifiche attivate per " + GAMES[k].name : "🔕 Notifiche silenziate per " + GAMES[k].name);
  renderBell();
 });
+function setGameMajor(k, on) { return setPref({major: on ? [...new Set([...notifPref.major, k])] : notifPref.major.filter(x => x !== k)}); }
 function setGameNotif(k, on) { return setPref({off: on ? notifPref.off.filter(x => x !== k) : [...new Set([...notifPref.off, k])]}); }
 function switchEl(checked, onchange, disabled) {
  const i = h("input", {type: "checkbox"}); i.checked = checked; i.disabled = !!disabled; i.addEventListener("change", () => onchange(i.checked));
@@ -1487,7 +1633,13 @@ function renderNotif() {
    box.append(h("div", {class: "nrow", style: "gap:8px"}, h("span", {style: "flex:0 0 auto"}, "Dalle"), time(q.from, "from"), h("span", {style: "flex:0 0 auto"}, "alle"), time(q.to, "to")));
   }
   box.append(h("p", {class: "v-note", style: "margin-top:12px"}, "Giochi da seguire:"));
-  for (const k of ORDER) box.append(h("div", {class: "nrow"}, h("span", {}, GAMES[k].name), switchEl(!notifPref.off.includes(k), on => setGameNotif(k, on))));
+  for (const k of ORDER) {
+   const g = GAMES[k], following = !notifPref.off.includes(k), onlyMajor = notifPref.major.includes(k);
+   const kind = !following ? null : g.watch ? h("span", {class: "tagw"}, "👁 solo grosse")
+    : h("button", {type: "button", class: "abtn mini" + (onlyMajor ? " on" : ""), title: "Solo patch con contenuti nuovi o bilanciamento: niente hotfix e correzioni minori", onclick: () => setGameMajor(k, !onlyMajor)}, onlyMajor ? "Solo grosse" : "Tutte");
+   box.append(h("div", {class: "nrow"}, h("span", {}, g.name), kind, switchEl(following, on => setGameNotif(k, on))));
+  }
+  box.append(h("p", {class: "v-note"}, "«Solo grosse»: patch con contenuti nuovi o cambi di bilanciamento, senza hotfix né correzioni minori. I giochi con 👁 mandano sempre solo quelle."));
   box.append(h("div", {class: "row-btns"}, h("button", {type: "button", class: "abtn", onclick: async () => {
    try { const reg = await navigator.serviceWorker.ready; await reg.showNotification("Game Patch Radar", {body: "Le notifiche funzionano ✓", icon: "icons/icon-192.png", badge: "icons/icon-192.png"}); } catch (e) { toast("Prova non riuscita"); }
   }}, "Invia una notifica di prova")));

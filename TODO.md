@@ -10,3 +10,10 @@ Idee per Game Patch Radar, in ordine di priorità.
 - [x] Segnare come letta una singola patch (oggi si segnano tutte le patch di un gioco aprendolo)
 - [x] Riassunti: in alcuni appaiono frasi di servizio dell'IA («Check word count…», es. Enshrouded) → filtrarle in `scripts/fetch_news.py`
 - [x] Copertine: quando Steam non risponde mostrare un riquadro con le iniziali invece del vuoto
+- [x] Notifiche per gioco «solo patch grosse»
+- [x] Confronto con la patch precedente nel visualizzatore
+- [x] Giochi da tenere d'occhio con soglia di prezzo
+- [x] «Annulla» dopo aggiunta/rimozione di un gioco
+- [x] Stato del ponte Cloudflare (token in scadenza)
+- [ ] (rimandato) Salvataggio/sincronizzazione di «letto» e «salvati»: oggi restano nel browser di ciascuno, va bene così
+- [ ] (rimandato) Altre fonti oltre a Steam

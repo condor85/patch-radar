@@ -16,11 +16,14 @@ function makeEnv(extra = {}) {
 }
 
 /* Finti GitHub e Steam: registrano le chiamate e restituiscono ciò che serve. */
-function mockNet({games = [{appid: 1, name: "Uno"}, {appid: 2, name: "Due"}], steam = {}, ghStatus = {}} = {}) {
+function mockNet({games = [{appid: 1, name: "Uno"}, {appid: 2, name: "Due"}], steam = {}, ghStatus = {}, repo = {}} = {}) {
   const calls = [];
   const files = {"games.json": {games}, "config.json": {ntfyTopic: "vecchio", repo: "condor85/patch-radar"}};
   globalThis.fetch = async (url, init = {}) => {
     url = String(url); calls.push({url, init});
+    if (url === "https://api.github.com/repos/condor85/patch-radar") {   // scheda del repository (per /status)
+      return new Response(JSON.stringify({permissions: {push: repo.push ?? true}}), {status: repo.status ?? 200, headers: repo.headers || {}});
+    }
     if (url.startsWith("https://api.github.com/repos/")) {
       const path = /contents\/([^?]+)/.exec(url)[1];
       if (ghStatus.read) return new Response("{}", {status: ghStatus.read});
@@ -213,6 +216,79 @@ test("errore imprevisto → 500 generico", async () => {
   const env = makeEnv(); env.RL = {get: async () => { throw new Error("kv giù"); }, put: async () => {}, delete: async () => {}};
   assert.equal((await call(env, "/login", {})).status, 200);   // il KV guasto non blocca l'accesso
 });
+
+test("aggiunta di un gioco da osservare: salva watch e soglia (anche scritta con la virgola)", async () => {
+  const net = mockNet({steam: {details: {"31": {success: true, data: {type: "game", name: "Trentuno"}}}}});
+  const r = await call(makeEnv(), "/add", {appid: 31, watch: true, target: "19,99"});
+  assert.equal(r.status, 200);
+  assert.deepEqual(net.files["games.json"].games.at(-1), {appid: 31, name: "Trentuno", watch: true, target: 19.99});
+});
+
+test("aggiunta da osservare senza soglia: ok, target null; soglia non valida → 400 e nessuna scrittura", async () => {
+  const net = mockNet({steam: {details: {"32": {success: true, data: {type: "game", name: "Trentadue"}}}}});
+  assert.equal((await call(makeEnv(), "/add", {appid: 32, watch: true})).status, 200);
+  assert.deepEqual(net.files["games.json"].games.at(-1), {appid: 32, name: "Trentadue", watch: true, target: null});
+  const before = net.files["games.json"].games.length;
+  for (const bad of [0, -5, "abc", 20000, {}, [], true]) {
+    assert.equal((await call(makeEnv(), "/add", {appid: 32, watch: true, target: bad})).status, 400, "soglia " + JSON.stringify(bad));
+  }
+  assert.equal(net.files["games.json"].games.length, before);
+});
+
+test("aggiunta normale ignora una soglia mandata senza watch", async () => {
+  const net = mockNet({steam: {details: {"33": {success: true, data: {type: "game", name: "Trentatre"}}}}});
+  await call(makeEnv(), "/add", {appid: 33, target: 10});
+  assert.deepEqual(net.files["games.json"].games.at(-1), {appid: 33, name: "Trentatre"});
+});
+
+test("/watch: attiva con soglia, cambia la soglia, poi disattiva e toglie i campi", async () => {
+  const net = mockNet();
+  assert.equal((await call(makeEnv(), "/watch", {appid: 1, watch: true, target: 12.5})).status, 200);
+  assert.deepEqual(net.files["games.json"].games[0], {appid: 1, name: "Uno", watch: true, target: 12.5});
+  assert.equal((await call(makeEnv(), "/watch", {appid: 1, watch: true, target: "9,5"})).status, 200);
+  assert.equal(net.files["games.json"].games[0].target, 9.5);
+  assert.deepEqual(net.files["games.json"].games[1], {appid: 2, name: "Due"});   // gli altri non cambiano
+  assert.equal((await call(makeEnv(), "/watch", {appid: 1, watch: false})).status, 200);
+  assert.deepEqual(net.files["games.json"].games[0], {appid: 1, name: "Uno"});
+});
+
+test("/watch: richieste non valide o gioco assente", async () => {
+  const net = mockNet();
+  assert.equal((await call(makeEnv(), "/watch", {appid: 1})).status, 400);
+  assert.equal((await call(makeEnv(), "/watch", {appid: 1, watch: "si"})).status, 400);
+  assert.equal((await call(makeEnv(), "/watch", {appid: 0, watch: true})).status, 400);
+  assert.equal((await call(makeEnv(), "/watch", {appid: 1, watch: true, target: -1})).status, 400);
+  assert.equal((await call(makeEnv(), "/watch", {appid: 999, watch: true, target: 5})).status, 404);
+  assert.equal(net.calls.filter(c => c.init.method === "PUT").length, 0);
+});
+
+test("/status: ponte attivo, giorni alla scadenza del token", async () => {
+  const exp = new Date(Date.now() + 10.5 * 86400000);
+  const stamp = exp.toISOString().slice(0, 19).replace("T", " ") + " UTC";
+  mockNet({repo: {headers: {"github-authentication-token-expiration": stamp}}});
+  const r = await call(makeEnv(), "/status", {});
+  assert.equal(r.status, 200); assert.equal(r.body.ok, true); assert.equal(r.body.github, true);
+  assert.equal(r.body.daysLeft, 10); assert.equal(r.body.canPush, true);
+});
+
+test("/status: senza intestazione di scadenza daysLeft è null; token non valido o senza scrittura → ok false", async () => {
+  mockNet();
+  const a = await call(makeEnv(), "/status", {});
+  assert.equal(a.body.ok, true); assert.equal(a.body.daysLeft, null);
+  mockNet({repo: {status: 401}});
+  const b = await call(makeEnv(), "/status", {});
+  assert.equal(b.status, 200); assert.equal(b.body.ok, false); assert.match(b.body.error, /non è più valido/);
+  mockNet({repo: {push: false}});
+  const c = await call(makeEnv(), "/status", {});
+  assert.equal(c.body.ok, false); assert.match(c.body.error, /scrivere/);
+  assert.ok(!JSON.stringify([a, b, c]).includes("ghp_finto"));
+});
+
+test("/status richiede la password", async () => {
+  mockNet();
+  assert.equal((await call(makeEnv(), "/status", {}, {auth: "Bearer sbagliata-sbagliata"})).status, 401);
+});
+
 
 let failed = 0;
 for (const [name, fn] of tests) {

@@ -42,6 +42,13 @@ function parseAppId(v) {
   return Number.isInteger(n) && n > 0 && n <= 999999999 ? n : null;
 }
 
+/* Soglia di prezzo in euro: numero tra 0,01 e 10000 (anche scritto come testo con la virgola), 2 decimali. null se non valida. */
+function parseTarget(v) {
+  if (v === null || v === undefined || v === "") return null;
+  const n = typeof v === "string" ? Number(v.trim().replace(",", ".")) : v;
+  return typeof n === "number" && Number.isFinite(n) && n > 0 && n <= 10000 ? Math.round(n * 100) / 100 : undefined;
+}
+
 function corsHeaders(env, origin) {
   const h = {"Vary": "Origin", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"};
   if (origin && origin === env.ALLOWED_ORIGIN) {
@@ -169,6 +176,12 @@ const ACTIONS = {
     const appid = parseAppId(body.appid);
     if (!appid) throw new HttpError(400, "Numero app Steam non valido.");
     const game = await steamGame(appid);
+    if (body.watch === true) {   // gioco «da tenere d'occhio»: solo patch importanti e avviso di prezzo
+      const target = parseTarget(body.target);
+      if (target === undefined) throw new HttpError(400, "Prezzo non valido: scrivi un importo in euro, per esempio 19,99.");
+      game.watch = true;
+      game.target = target;
+    }
     let duplicate = false;
     const r = await editJson(env, "games.json", o => {
       const list = Array.isArray(o.games) ? o.games : [];
@@ -177,6 +190,41 @@ const ACTIONS = {
       return {...o, games: [...list, game]};
     }, "Aggiungi " + game.name);
     return {ok: true, added: !duplicate, game, count: (r.data.games || []).length};
+  },
+
+  /* Cambia lo stato «da tenere d'occhio» e la soglia di prezzo di un gioco già presente. */
+  async "/watch"(env, body) {
+    const appid = parseAppId(body.appid);
+    if (!appid) throw new HttpError(400, "Numero app Steam non valido.");
+    if (typeof body.watch !== "boolean") throw new HttpError(400, "Richiesta non valida.");
+    const target = body.watch ? parseTarget(body.target) : null;
+    if (target === undefined) throw new HttpError(400, "Prezzo non valido: scrivi un importo in euro, per esempio 19,99.");
+    let found = false;
+    await editJson(env, "games.json", o => {
+      const list = Array.isArray(o.games) ? o.games : [];
+      if (!list.some(x => Number(x.appid) === appid)) return null;
+      found = true;
+      return {...o, games: list.map(x => {
+        if (Number(x.appid) !== appid) return x;
+        const {watch, target: _t, ...rest} = x;
+        return body.watch ? {...rest, watch: true, target} : rest;
+      })};
+    }, (body.watch ? "Osserva " : "Smetti di osservare ") + appid);
+    if (!found) throw new HttpError(404, "Gioco non presente nell'app.");
+    return {ok: true};
+  },
+
+  /* Stato del ponte: raggiungibile, token GitHub valido e quando scade (l'intestazione c'è solo per i token fine-grained). */
+  async "/status"(env) {
+    const r = await gh(env, "");
+    const out = {ok: true, github: r.ok, repo: env.REPO, daysLeft: null, expires: null};
+    if (!r.ok) { out.ok = false; out.error = r.status === 401 ? "Il token GitHub non è più valido." : "Il token GitHub non può leggere il repository."; return out; }
+    const exp = r.headers.get("github-authentication-token-expiration");
+    const t = exp ? Date.parse(exp.replace(" UTC", "Z").replace(" ", "T")) : NaN;
+    if (Number.isFinite(t)) { out.expires = new Date(t).toISOString(); out.daysLeft = Math.floor((t - Date.now()) / 86400000); }
+    try { out.canPush = !!(await r.json()).permissions?.push; } catch { out.canPush = null; }
+    if (out.canPush === false) { out.ok = false; out.error = "Il token GitHub non può scrivere sul repository."; }
+    return out;
   },
 
   async "/remove"(env, body) {

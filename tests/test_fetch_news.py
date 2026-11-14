@@ -307,7 +307,7 @@ class Outbox(unittest.TestCase):
             with open("outbox.json", encoding="utf-8") as f:
                 queued = json.load(f)
         self.assertEqual(len(queued), 1)
-        self.assertEqual(queued[0]["topics"], ["t", "t-1"])
+        self.assertEqual(queued[0]["topics"], ["t", "t-1", "t-1-major"])   # «Patch 2.0» è una patch grossa
         self.assertIn("Patch 2.0", queued[0]["message"])
 
     def test_main_removes_a_stale_outbox_when_nothing_is_new(self):
@@ -395,6 +395,90 @@ class CleanAiSummaryTests(unittest.TestCase):
         with mock.patch.object(fn, "GEMINI_KEY", ""), mock.patch.object(fn, "extractive_summary", return_value="• ok semplice"):
             fn.add_summaries(games, old)
         self.assertEqual(games[0]["items"][0]["summary"], "• ok semplice")
+
+
+class MajorAndWatchTests(unittest.TestCase):
+    def setUp(self):
+        fn.OUTBOX_ITEMS.clear()
+        self.addCleanup(fn.OUTBOX_ITEMS.clear)
+
+    def test_is_major(self):
+        self.assertTrue(fn.is_major({"patch": True, "title": "Update", "labels": ["new"]}))
+        self.assertTrue(fn.is_major({"patch": True, "title": "Update", "labels": ["bug", "balance"]}))
+        self.assertTrue(fn.is_major({"patch": True, "title": "Patch 1.0 released", "labels": []}))
+        self.assertTrue(fn.is_major({"patch": True, "title": "Season 3 is here", "labels": []}))
+        self.assertFalse(fn.is_major({"patch": True, "title": "Hotfix 1.0.1", "labels": ["bug"]}))
+        self.assertFalse(fn.is_major({"patch": True, "title": "Valheim 0.219.0 patch", "labels": ["bug"]}))
+        self.assertFalse(fn.is_major({"patch": False, "title": "Season 3 stream", "labels": ["new"]}))
+
+    def test_major_patch_also_goes_to_major_topic(self):
+        with mock.patch.object(fn, "NTFY_TOPIC", "t"):
+            fn.notify("G", {"title": "Update", "patch": True, "labels": ["new"]}, 7)
+            fn.notify("G", {"title": "Hotfix", "patch": True, "labels": ["bug"]}, 7)
+        self.assertEqual([m["topics"] for m in fn.OUTBOX_ITEMS], [["t", "t-7", "t-7-major"], ["t", "t-7"]])
+
+    def test_watched_game_only_sends_major_and_no_announcements(self):
+        with mock.patch.object(fn, "NTFY_TOPIC", "t"):
+            fn.notify("G", {"title": "Update", "patch": True, "labels": ["new"]}, 7, True)
+            fn.notify("G", {"title": "Hotfix", "patch": True, "labels": ["bug"]}, 7, True)
+            fn.notify("G", {"title": "Evento"}, 7, True)
+        self.assertEqual([m["topics"] for m in fn.OUTBOX_ITEMS], [["t-7-major"]])
+
+    def test_digest_has_a_major_only_variant(self):
+        games = [{"appid": 7, "name": "G", "items": [
+            {"patch": True, "date": 10, "title": "Hotfix", "labels": ["bug"]},
+            {"patch": True, "date": 11, "title": "Big", "labels": ["new"]}]}]
+        with mock.patch.object(fn, "NTFY_TOPIC", "t"), contextlib.redirect_stdout(io.StringIO()):
+            fn.send_digest(games, 5)
+        self.assertEqual([m["topics"] for m in fn.OUTBOX_ITEMS], [["t-7-digest"], ["t-7-digest-major"]])
+        self.assertIn("2 aggiornamenti", fn.OUTBOX_ITEMS[0]["title"])
+        self.assertIn("1 aggiornamento", fn.OUTBOX_ITEMS[1]["title"])
+
+    def test_price_target(self):
+        self.assertTrue(fn.price_reached({"cents": 1999}, 20))
+        self.assertTrue(fn.price_reached({"cents": 2000}, 20))
+        self.assertFalse(fn.price_reached({"cents": 2001}, 20))
+        self.assertFalse(fn.price_reached({"final": "20 €"}, 20))
+        self.assertFalse(fn.price_reached(None, 20))
+        self.assertFalse(fn.price_reached({"cents": 100}, None))
+
+    def test_notify_target_message(self):
+        with mock.patch.object(fn, "NTFY_TOPIC", "t"):
+            fn.notify_target("G", 7, {"final": "17,99€", "cents": 1799}, 20)
+        m = fn.OUTBOX_ITEMS[0]
+        self.assertEqual(m["topics"], ["t-7-target"])
+        self.assertIn("17,99€", m["message"])
+        self.assertIn("20,00 €", m["message"])
+
+    def test_clean_target_and_load_games(self):
+        self.assertEqual(fn.clean_target(19.999), 20.0)
+        for bad in (None, 0, -3, "5", True, 99999):
+            self.assertIsNone(fn.clean_target(bad))
+        files = {"games.json": {"games": [{"appid": 1, "name": "A"}, {"appid": 2, "name": "B", "watch": True, "target": 15},
+                                          {"appid": 3, "watch": True}, {"appid": 4, "watch": "yes", "target": 5}]}}
+        with workdir(files):
+            out = fn.load_games()
+        self.assertEqual(out, [{"appid": 1, "name": "A"}, {"appid": 2, "name": "B", "watch": True, "target": 15.0},
+                               {"appid": 3, "name": "", "watch": True, "target": None}, {"appid": 4, "name": ""}])
+
+    def test_main_alerts_when_a_watched_game_crosses_the_target(self):
+        old_items = [{"gid": "1", "title": "Vecchio", "contents": "x", "date": 1, "tags": []}]
+        prev = {"updated": 1, "digest_ts": 4102444800, "games": [{"appid": 1, "name": "G1", "items": old_items, "price": {"final": "25,00€", "initial": "25,00€", "discount": 0, "cents": 2500}}]}
+        files = {"games.json": {"games": [{"appid": 1, "name": "G1", "watch": True, "target": 20}]}, "config.json": {"ntfyTopic": "t"}, "data/news.json": prev}
+        cheap = {"name": "G1", "image": "", "price": {"final": "18,00€", "initial": "25,00€", "discount": 28, "cents": 1800}}
+        with workdir(files):
+            with mock.patch.object(fn, "fetch_game", return_value=old_items), mock.patch.object(fn, "store_details", return_value=cheap), \
+                    mock.patch.object(fn, "fetch_ntfy_key", return_value=""), mock.patch.object(fn, "update_players", return_value=False), mock.patch.object(fn, "GEMINI_KEY", ""), \
+                    mock.patch.object(fn, "extractive_summary", return_value=""), mock.patch.object(fn, "NTFY_TOPIC", "t"), \
+                    contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                fn.main()
+            with open("outbox.json", encoding="utf-8") as f:
+                queued = json.load(f)
+            with open("data/news.json", encoding="utf-8") as f:
+                saved = json.load(f)
+        self.assertEqual([m["topics"] for m in queued], [["t-1-target"], ["t-1-sale"]])
+        self.assertTrue(saved["games"][0]["watch"])
+        self.assertEqual(saved["games"][0]["target"], 20.0)
 
 
 if __name__ == "__main__":

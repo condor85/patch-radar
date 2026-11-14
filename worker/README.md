@@ -55,7 +55,7 @@ Poi sul telefono: ⚙ → Amministratore → inserisci la password. Da quel mome
 ## Sicurezza
 - Il telefono non ha mai il token GitHub: perso il telefono, basta cambiare `ADMIN_PASSWORD` sul ponte.
 - Il ponte accetta solo richieste dall'origine del sito (`ALLOWED_ORIGIN`) e risponde solo con la password giusta (confronto a tempo costante).
-- Può cambiare **solo** `games.json` (aggiungi/togli) e l'argomento notifiche in `config.json`. Il nome del gioco lo legge da Steam, non dal telefono; tetto di 40 giochi; almeno uno deve restare.
+- Può cambiare **solo** `games.json` (aggiungi/togli, stato «da tenere d'occhio» e soglia di prezzo) e l'argomento notifiche in `config.json`. Con `/status` dice se il token GitHub funziona e tra quanti giorni scade. Il nome del gioco lo legge da Steam, non dal telefono; tetto di 40 giochi; almeno uno deve restare.
 - Gli errori verso l'app sono generici: token e dettagli interni non vengono mai mostrati.
 - Se non vuoi usare il ponte, lascia `adminApi` vuoto: l'app torna al vecchio metodo con il token personale.
 

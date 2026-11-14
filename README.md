@@ -23,8 +23,13 @@ In entrambi i casi il sito si aggiorna da solo in circa un minuto.
 - **Avviso** se il controllo automatico non parte da più di 4 ore.
 - **Notifiche**: solo patch vere per impostazione predefinita; opzioni per annunci/eventi, saldi, riepilogo serale (18:00) e ore silenziose (senza suono né vibrazione).
 - Testo regolabile (A−/A+).
+- **Solo patch grosse** (⚙ → Notifiche → per ogni gioco «Tutte» / «Solo grosse»): niente hotfix né correzioni minori. È «grossa» una patch con contenuti nuovi o cambi di bilanciamento (etichette automatiche), oppure con una versione x.0, una stagione o un'espansione nel titolo.
+- **Novità rispetto alla patch precedente**: aprendo una patch uscita entro 3 settimane dalla precedente, un riquadro mostra le voci che prima non c'erano.
+- **Giochi da tenere d'occhio** (👁): per un gioco che non giochi ancora, arrivano solo le patch grosse e un avviso quando il prezzo scende sotto la soglia scelta. Si imposta da ⚙ → Amministratore (casella «Solo da tenere d'occhio» in aggiunta, oppure «👁 Osserva» su un gioco già presente) o a mano in `games.json`: `{"appid": 123, "watch": true, "target": 19.99}`.
+- **Annulla**: dopo aver aggiunto o eliminato un gioco dal telefono compare per 10 secondi il pulsante «Annulla».
+- **Stato del ponte**: in ⚙ → Amministratore una riga dice se il ponte funziona e tra quanti giorni scade il token GitHub; se mancano 14 giorni o meno (o è scaduto) l'app lo segnala anche una volta al giorno all'apertura.
 
-Gli argomenti ntfy sono `<argomento>-<appid>` (patch), `-news`, `-sale`, `-digest`.
+Gli argomenti ntfy sono `<argomento>-<appid>` (patch), `-major` (solo patch grosse), `-news`, `-sale`, `-target` (prezzo sotto soglia), `-digest` e `-digest-major`.
 
 ## Sicurezza
 
