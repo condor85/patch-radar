@@ -32,7 +32,9 @@ SITE_URL = os.environ.get("SITE_URL", "")
 OUT = "data/news.json"
 PLAYERS_OUT = "data/players.json"        # giocatori online: file a parte, così news.json cambia solo quando ci sono novità vere
 OUTBOX = os.environ.get("OUTBOX_FILE", "outbox.json")
-PLAYERS_MAX_AGE = 6 * 3600               # il numero si aggiorna se cambia di almeno il 10% o dopo questo tempo
+PRICES_OUT = "data/prices.json"          # storico prezzi: file a parte, cambia solo quando un prezzo varia
+PRICE_HISTORY_MAX = 60                   # variazioni di prezzo conservate per gioco
+PLAYERS_MAX_AGE = 6 * 3600              # il numero si aggiorna se cambia di almeno il 10% o dopo questo tempo
 SIGN_VERSION = "patch-radar-v1"          # deve coincidere con sw.js
 KEEP = ("gid", "title", "url", "contents", "date", "feedlabel", "feedname", "author", "tags")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -202,6 +204,41 @@ def update_players(games, now):
         return False
     os.makedirs("data", exist_ok=True)
     with open(PLAYERS_OUT, "w", encoding="utf-8") as f:
+        json.dump({"games": out}, f, separators=(",", ":"))
+    return True
+
+
+def update_price_history(games, now):
+    """Storico prezzi in data/prices.json: per gioco il minimo visto finora (`min`: cents, testo, data) e le ultime variazioni
+    (`h`: coppie [data, centesimi]). Si scrive solo quando il prezzo cambia, quindi il repository non riceve commit inutili.
+    Il minimo parte da quando l'app ha iniziato a seguire il prezzo, non è il minimo assoluto di Steam. Ritorna True se il file è cambiato."""
+    try:
+        with open(PRICES_OUT, encoding="utf-8") as f:
+            prev = json.load(f).get("games", {})
+        if not isinstance(prev, dict):
+            prev = {}
+    except Exception:  # noqa
+        prev = {}
+    out = {k: dict(v) for k, v in prev.items() if isinstance(v, dict)}
+    for g in games:
+        p = g.get("price")
+        if not p or isinstance(p.get("cents"), bool) or not isinstance(p.get("cents"), int):
+            continue
+        k, cents = str(g["appid"]), p["cents"]
+        e = out.get(k) or {}
+        h = [x for x in (e.get("h") or []) if isinstance(x, list) and len(x) == 2]
+        if h and h[-1][1] == cents:
+            continue  # prezzo invariato
+        h.append([now, cents])
+        e["h"] = h[-PRICE_HISTORY_MAX:]
+        m = e.get("min")
+        if not isinstance(m, dict) or not isinstance(m.get("c"), int) or cents < m["c"]:
+            e["min"] = {"c": cents, "f": p.get("final") or "", "ts": now}
+        out[k] = e
+    if out == prev:
+        return False
+    os.makedirs("data", exist_ok=True)
+    with open(PRICES_OUT, "w", encoding="utf-8") as f:
         json.dump({"games": out}, f, separators=(",", ":"))
     return True
 
@@ -699,6 +736,7 @@ def main():
         OUTBOX_ITEMS.clear()  # dati non salvati: niente notifiche
     else:
         players_changed = update_players(games, now)
+        players_changed = update_price_history(games, now) or players_changed
     if news_changed:
         os.makedirs("data", exist_ok=True)
         with open(OUT, "w", encoding="utf-8") as f:

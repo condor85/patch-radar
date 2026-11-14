@@ -370,6 +370,42 @@ class Players(unittest.TestCase):
                     fn.current_players(1)
 
 
+class PriceHistory(unittest.TestCase):
+    def run_once(self, files, price, now):
+        with workdir(files):
+            changed = fn.update_price_history([{"appid": 1, "price": price}], now)
+            with open("data/prices.json", encoding="utf-8") as f:
+                return changed, json.load(f)["games"]["1"]
+
+    def test_first_price_sets_minimum(self):
+        changed, e = self.run_once({}, {"final": "20,00€", "cents": 2000}, 100)
+        self.assertTrue(changed)
+        self.assertEqual(e["min"], {"c": 2000, "f": "20,00€", "ts": 100})
+        self.assertEqual(e["h"], [[100, 2000]])
+
+    def test_lower_price_updates_minimum_and_higher_does_not(self):
+        base = {"data/prices.json": {"games": {"1": {"min": {"c": 1500, "f": "15,00€", "ts": 50}, "h": [[50, 1500]]}}}}
+        _, e = self.run_once(base, {"final": "10,00€", "cents": 1000}, 200)
+        self.assertEqual(e["min"]["c"], 1000)
+        _, e = self.run_once(base, {"final": "30,00€", "cents": 3000}, 200)
+        self.assertEqual(e["min"]["c"], 1500)
+        self.assertEqual(e["h"][-1], [200, 3000])
+
+    def test_unchanged_price_writes_nothing(self):
+        base = {"data/prices.json": {"games": {"1": {"min": {"c": 1500, "f": "x", "ts": 50}, "h": [[50, 1500]]}}}}
+        changed, _ = self.run_once(base, {"final": "15,00€", "cents": 1500}, 300)
+        self.assertFalse(changed)
+
+    def test_missing_price_is_ignored_and_history_is_capped(self):
+        with workdir():
+            self.assertFalse(fn.update_price_history([{"appid": 1, "price": None}, {"appid": 2, "price": {"final": "x"}}], 1))
+            self.assertFalse(os.path.exists("data/prices.json"))
+        h = [[i, 1000 + i] for i in range(fn.PRICE_HISTORY_MAX)]
+        _, e = self.run_once({"data/prices.json": {"games": {"1": {"min": {"c": 1000, "f": "x", "ts": 0}, "h": h}}}}, {"final": "y", "cents": 5000}, 999)
+        self.assertEqual(len(e["h"]), fn.PRICE_HISTORY_MAX)
+        self.assertEqual(e["h"][-1], [999, 5000])
+
+
 class CleanAiSummaryTests(unittest.TestCase):
     def test_drops_reasoning_lines_and_word_counts(self):
         raw = ("• Check word count and constraints:**\n• Point 1:\n"
