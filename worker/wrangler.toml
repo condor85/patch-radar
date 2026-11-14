@@ -7,8 +7,8 @@ compatibility_date = "2026-11-01"
 REPO = "condor85/patch-radar"
 ALLOWED_ORIGIN = "https://condor85.github.io"
 
-# Facoltativo ma consigliato (blocca chi prova a indovinare la password):
-# crea un archivio KV chiamato «RL» e togli il commento qui sotto.
+# Il blocco di chi sbaglia la password usa già l'archivio TEAM qui sotto: il KV «RL» non serve.
+# Resta supportato solo come ripiego per un ponte senza TEAM: crea un KV chiamato «RL» e togli il commento.
 # [[kv_namespaces]]
 # binding = "RL"
 # id = "<id dell'archivio KV>"

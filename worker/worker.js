@@ -66,25 +66,38 @@ function json(env, origin, status, body) {
 }
 
 /* ---------- Accesso ---------- */
-async function failCount(env, ip) {
-  if (!env.RL) return 0;
-  try { return Number(await env.RL.get("f:" + ip)) || 0; } catch { return 0; }
+/* Contatore dei tentativi sbagliati. Se c'è il Durable Object TEAM (sempre, con l'installazione automatica) si usa quello:
+   è coerente e non richiede di creare nulla a mano. Il KV «RL» resta come ripiego per i ponti installati senza TEAM. */
+async function guard(env, ip, action) {
+  try {
+    const r = await env.TEAM.get(env.TEAM.idFromName("squadra")).fetch("https://squadra.internal/rl", {method: "POST", body: JSON.stringify({op: "rl", action, ip})});
+    return !!(await r.json()).blocked;
+  } catch { return false; }   // un guasto del contatore non deve bloccare l'accesso
+}
+async function isBlocked(env, ip) {
+  if (env.TEAM) return guard(env, ip, "check");
+  if (!env.RL) return false;
+  try { return (Number(await env.RL.get("f:" + ip)) || 0) >= FAIL_LIMIT; } catch { return false; }
 }
 async function addFail(env, ip) {
+  if (env.TEAM) { await guard(env, ip, "fail"); return; }
   if (!env.RL) return;
-  try { await env.RL.put("f:" + ip, String((await failCount(env, ip)) + 1), {expirationTtl: FAIL_WINDOW}); } catch {}
+  try { await env.RL.put("f:" + ip, String((Number(await env.RL.get("f:" + ip)) || 0) + 1), {expirationTtl: FAIL_WINDOW}); } catch {}
 }
 async function clearFails(env, ip) {
+  if (env.TEAM) { await guard(env, ip, "clear"); return; }
   if (!env.RL) return;
   try { await env.RL.delete("f:" + ip); } catch {}
 }
+/* L'indirizzo viene dall'intestazione di Cloudflare; qualunque altra forma diventa «?» (niente chiavi strane nell'archivio) */
+const ipOf = request => { const v = request.headers.get("CF-Connecting-IP") || "?"; return /^[0-9a-fA-F:.]{2,45}$/.test(v) ? v : "?"; };
 
 async function authenticate(request, env) {
   if (!env.ADMIN_PASSWORD || env.ADMIN_PASSWORD.length < MIN_PASSWORD || !env.GITHUB_TOKEN || !env.REPO || !env.ALLOWED_ORIGIN) {
     throw new HttpError(503, "Il ponte non è configurato correttamente.");
   }
-  const ip = request.headers.get("CF-Connecting-IP") || "?";
-  if ((await failCount(env, ip)) >= FAIL_LIMIT) throw new HttpError(429, "Troppi tentativi sbagliati. Riprova tra qualche minuto.");
+  const ip = ipOf(request);
+  if (await isBlocked(env, ip)) throw new HttpError(429, "Troppi tentativi sbagliati. Riprova tra qualche minuto.");
   const m = /^Bearer (.{1,200})$/.exec(request.headers.get("Authorization") || "");
   if (!m || !(await sameSecret(m[1], env.ADMIN_PASSWORD))) {
     await addFail(env, ip);
@@ -281,6 +294,7 @@ async function sha(text) {
 function cleanMember(s) {
   const n = String(s == null ? "" : s).replace(/[<>\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim().slice(0, 24);
   if (n.length < 2) throw new HttpError(400, "Scrivi un nome di almeno due lettere.");
+  if (n.toLocaleLowerCase("it-IT") in Object.prototype) throw new HttpError(400, "Questo nome non è disponibile: scegline un altro.");   // «constructor», «__proto__»…: sono chiavi speciali degli oggetti
   return n;
 }
 const memberKey = n => n.toLocaleLowerCase("it-IT");
@@ -295,6 +309,22 @@ export class Team {
       if (e instanceof HttpError) return reply(e.status, {error: e.message});
       return reply(500, {error: "Errore del servizio. Riprova."});
     }
+  }
+
+  /* Conta i tentativi sbagliati per indirizzo (action: check | fail | clear). Dopo la lettura ci sono solo operazioni sull'archivio,
+     quindi richieste parallele non si sovrappongono e ogni tentativo viene contato. */
+  async counter(key, ip, action, limit, windowMs) {
+    const st = this.state.storage, now = Date.now(), fails = (await st.get(key)) || {};
+    const rec = Object.hasOwn(fails, ip) ? fails[ip] : undefined, live = !!rec && now - rec.t < windowMs;
+    if (action === "check") return {blocked: live && rec.n >= limit};
+    if (action === "clear") { if (rec) { delete fails[ip]; await st.put(key, fails); } return {blocked: false}; }
+    if (action !== "fail") throw new HttpError(400, "Richiesta non valida.");
+    for (const [k, r] of Object.entries(fails)) if (now - r.t >= windowMs) delete fails[k];
+    fails[ip] = {n: (live ? rec.n : 0) + 1, t: now};
+    const keys = Object.keys(fails);   // tetto alla dimensione dell'elenco (indirizzi IPv6 a rotazione)
+    if (keys.length > 500) for (const k of keys.sort((a, b) => fails[a].t - fails[b].t).slice(0, keys.length - 500)) delete fails[k];
+    await st.put(key, fails);
+    return {blocked: fails[ip].n >= limit};
   }
 
   async snapshot() {
@@ -325,18 +355,19 @@ export class Team {
       await st.delete("fails");
       return {ok: true, code: showCode(code)};
     }
+    if (m.op === "rl") {   // limitatore delle password dell'amministratore: chiamato solo dal ponte
+      return {ok: true, ...(await this.counter("adminfails", String(m.ip), m.action, FAIL_LIMIT, FAIL_WINDOW * 1000))};
+    }
     const meta = await st.get("meta");
     if (!meta) throw new HttpError(404, "La squadra non è ancora stata creata: chiedi all'amministratore di creare il codice.");
-    const now = Date.now(), fails = (await st.get("fails")) || {}, rec = fails[m.ip];
-    const recent = rec && now - rec.t < TEAM_FAIL_WINDOW;
-    if (recent && rec.n >= TEAM_FAIL_LIMIT) throw new HttpError(429, "Troppi tentativi sbagliati. Riprova tra qualche minuto.");
-    if (!(await sameSecret(await sha(normCode(m.code)), meta.codeHash))) {
-      for (const [ip, r] of Object.entries(fails)) if (now - r.t >= TEAM_FAIL_WINDOW) delete fails[ip];
-      fails[m.ip] = {n: (recent ? rec.n : 0) + 1, t: now};
-      await st.put("fails", fails);
+    const now = Date.now(), ip = String(m.ip);
+    const ok = await sameSecret(await sha(normCode(m.code)), meta.codeHash);   // il calcolo va prima: dopo restano solo operazioni sull'archivio
+    if ((await this.counter("fails", ip, "check", TEAM_FAIL_LIMIT, TEAM_FAIL_WINDOW)).blocked) throw new HttpError(429, "Troppi tentativi sbagliati. Riprova tra qualche minuto.");
+    if (!ok) {
+      await this.counter("fails", ip, "fail", TEAM_FAIL_LIMIT, TEAM_FAIL_WINDOW);
       throw new HttpError(401, "Codice della squadra errato.");
     }
-    if (rec) { delete fails[m.ip]; await st.put("fails", fails); }
+    await this.counter("fails", ip, "clear", TEAM_FAIL_LIMIT, TEAM_FAIL_WINDOW);
 
     if (m.op === "state") return {ok: true, ...(await this.snapshot())};
 
@@ -376,7 +407,7 @@ export class Team {
     if (m.op === "note") {
       const key = memberKey(cleanMember(m.name));
       if (!members[key]) throw new HttpError(403, "Prima entra nella squadra con il tuo nome.");
-      const gid = typeof m.gid === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(m.gid) ? m.gid : null;
+      const gid = typeof m.gid === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(m.gid) && !(m.gid in Object.prototype) ? m.gid : null;
       if (!gid) throw new HttpError(400, "Patch non valida.");
       const notes = (await st.get("notes")) || {};
       const list = notes[gid] || [];
@@ -421,7 +452,7 @@ async function teamCall(env, op, request, body) {
   const m = /^Bearer (.{1,200})$/.exec(request.headers.get("Authorization") || "");
   const stub = env.TEAM.get(env.TEAM.idFromName("squadra"));
   const r = await stub.fetch("https://squadra.internal/" + op, {method: "POST", body: JSON.stringify({
-    op, ip: request.headers.get("CF-Connecting-IP") || "?", code: m ? m[1] : "",
+    op, ip: ipOf(request), code: m ? m[1] : "",
     name: body.name, appid: body.appid, kind: body.kind === undefined ? undefined : body.kind,
     action: body.action, ts: body.ts, id: body.id, note: body.note, gid: body.gid, text: body.text})});
   let d = {}; try { d = await r.json(); } catch {}

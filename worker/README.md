@@ -39,8 +39,8 @@ Costo: zero (piano gratuito di Cloudflare). Tempo: circa 10 minuti, una volta so
 | `REPO` | Testo | `condor85/patch-radar` |
 | `ALLOWED_ORIGIN` | Testo | `https://condor85.github.io` (solo l'indirizzo, senza `/patch-radar`) |
 
-**Consigliato:** crea un archivio KV (*Storage & Databases → KV*) chiamato `RL` e collegalo al ponte con il nome `RL`
-(*Settings → Bindings*). Serve a bloccare per 15 minuti chi sbaglia la password 5 volte.
+Il blocco di 15 minuti dopo 5 password sbagliate usa l'archivio `TEAM` (Durable Object), presente con l'installazione automatica.
+Solo per un ponte creato a mano **senza** `TEAM`: crea un archivio KV chiamato `RL` e collegalo al ponte con lo stesso nome (*Settings → Bindings*).
 
 ## 4. Collega l'app al ponte
 Copia l'indirizzo del ponte (tipo `https://patch-radar-admin.TUONOME.workers.dev`) e scrivilo in `config.json`:
