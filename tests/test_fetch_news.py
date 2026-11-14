@@ -265,6 +265,35 @@ class Outbox(unittest.TestCase):
             fn.notify("G", {"title": "x", "patch": True}, 1)
         self.assertEqual(fn.OUTBOX_ITEMS, [])
 
+    def test_keyword_alert_for_a_small_patch(self):
+        item = {"title": "Hotfix 1.2.1", "patch": True, "labels": ["bug"], "contents": "Fixed a crash with controller input in co-op."}
+        with mock.patch.object(fn, "NTFY_TOPIC", "t"):
+            fn.notify("G", item, 5)
+        self.assertEqual([m["topics"] for m in fn.OUTBOX_ITEMS], [["t", "t-5"], ["t-5-kw-coop"], ["t-5-kw-crash"], ["t-5-kw-controller"]])
+        self.assertIn("Co-op e multiplayer", fn.OUTBOX_ITEMS[1]["title"])
+
+    def test_no_keyword_alert_for_major_patches_or_watched_games(self):
+        """Le patch grosse arrivano già a chi segue «solo grosse»: niente doppioni. I giochi osservati restano solo-grosse."""
+        major = {"title": "Patch 2.0", "patch": True, "contents": "New co-op mode and crash fixes."}
+        small = {"title": "Hotfix", "patch": True, "contents": "Fixed a crash."}
+        with mock.patch.object(fn, "NTFY_TOPIC", "t"):
+            fn.notify("G", major, 5)
+            self.assertEqual([m["topics"] for m in fn.OUTBOX_ITEMS], [["t", "t-5", "t-5-major"]])
+            fn.OUTBOX_ITEMS.clear()
+            fn.notify("G", small, 5, watch=True)
+        self.assertEqual(fn.OUTBOX_ITEMS, [])
+
+    def test_keywords_are_whole_words_and_ignore_bbcode(self):
+        self.assertEqual(fn.keywords_of({"title": "x", "contents": "[img]co-op.png[/img] Nothing here, a modern modem."}), [])
+        self.assertEqual(fn.keywords_of({"title": "Italian added", "contents": "Steam Deck: [b]controller[/b] fix. Workshop mods work again."}), ["controller", "mod", "lang"])
+
+    def test_keyword_groups_match_the_app(self):
+        """Gli id dei gruppi devono essere gli stessi in index.html (KW_GROUPS) e qui, altrimenti gli argomenti non combaciano."""
+        import re
+        html = read(os.path.join(os.path.dirname(__file__), "..", "index.html"))
+        ids = re.findall(r'\["(\w+)", "[^"]+"\]', re.search(r"const KW_GROUPS = \[(.*?)\];", html).group(1))
+        self.assertEqual(ids, list(fn.KEYWORD_GROUPS))
+
     def test_send_outbox_sends_then_deletes_file(self):
         with workdir():
             with open("outbox.json", "w", encoding="utf-8") as f:

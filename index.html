@@ -1565,12 +1565,15 @@ function setTopicLink() { renderNotif(); if (notifPref.on) syncNotif().catch(() 
 const NOTIF_KEY = "game_patch_radar_notif_v1";
 const NTFY = "https://ntfy.sh";
 /* major = giochi di cui si vogliono solo le patch grosse; off = giochi senza avvisi; mode = «now» (subito) o «digest» (riepilogo serale); news = anche annunci ed eventi; sale = saldi; quiet = ore senza suono */
-let notifPref = {on: false, off: [], major: [], mode: "now", news: false, sale: false, quiet: {on: false, from: "23:00", to: "08:00"}};
+let notifPref = {on: false, off: [], major: [], kw: [], mode: "now", news: false, sale: false, quiet: {on: false, from: "23:00", to: "08:00"}};
+/* Parole chiave: stessi id di KEYWORD_GROUPS in scripts/fetch_news.py. kw = gruppi scelti: avviso anche per le patch piccole che li contengono,
+   ma solo sui giochi con «Solo grosse» (sugli altri arrivano già tutte le patch) e in modalità «Subito». */
+const KW_GROUPS = [["coop", "Co-op e multiplayer"], ["crash", "Crash e blocchi"], ["controller", "Controller e Steam Deck"], ["mod", "Mod e Workshop"], ["perf", "Prestazioni"], ["lang", "Lingua italiana"]];
 let notifMsg = null;
 function loadNotif() {
  try {
   const d = JSON.parse(localStorage.getItem(NOTIF_KEY) || "null"), q = (d && d.quiet) || {};
-  if (d) notifPref = {on: !!d.on, off: d.off || [], major: Array.isArray(d.major) ? d.major : [], mode: d.mode === "digest" ? "digest" : "now", news: !!d.news, sale: !!d.sale,
+  if (d) notifPref = {on: !!d.on, off: d.off || [], major: Array.isArray(d.major) ? d.major : [], kw: Array.isArray(d.kw) ? d.kw.filter(x => KW_GROUPS.some(g => g[0] === x)) : [], mode: d.mode === "digest" ? "digest" : "now", news: !!d.news, sale: !!d.sale,
    quiet: {on: !!q.on, from: q.from || "23:00", to: q.to || "08:00"}};
  } catch {}
 }
@@ -1595,6 +1598,7 @@ function topicList() {
   const g = GAMES[k], id = CFG.ntfyTopic + "-" + g.appid;
   const major = g.watch || notifPref.major.includes(k);   // giochi osservati: sempre e solo patch grosse
   out.push((notifPref.mode === "digest" ? id + "-digest" : id) + (major ? "-major" : ""));
+  if (notifPref.mode === "now" && !g.watch && notifPref.major.includes(k)) for (const w of notifPref.kw) out.push(id + "-kw-" + w);   // parole chiave nelle patch piccole
   if (notifPref.news && !g.watch) out.push(id + "-news");
   if (notifPref.sale) out.push(id + "-sale");
   if (g.watch && g.target) out.push(id + "-target");   // avviso quando il prezzo scende sotto la soglia
@@ -1703,6 +1707,16 @@ function renderNotif() {
    box.append(h("div", {class: "nrow"}, h("span", {}, g.name), kind, switchEl(following, on => setGameNotif(k, on))));
   }
   box.append(h("p", {class: "v-note"}, "«Solo grosse»: patch con contenuti nuovi o cambi di bilanciamento, senza hotfix né correzioni minori. I giochi con 👁 mandano sempre solo quelle."));
+  box.append(h("p", {class: "v-note", style: "margin-top:12px"}, "Avvisi per argomento:"));
+  const kwBox = h("div", {class: "seg", style: "flex-wrap:wrap;gap:6px"});
+  for (const [w, label] of KW_GROUPS) {
+   const on = notifPref.kw.includes(w);
+   kwBox.append(h("button", {type: "button", class: "abtn mini" + (on ? " on" : ""), "aria-pressed": on ? "true" : "false", onclick: () => setPref({kw: on ? notifPref.kw.filter(x => x !== w) : [...notifPref.kw, w]})}, label));
+  }
+  box.append(kwBox);
+  box.append(h("p", {class: "v-note"}, notifPref.mode === "digest" ? "Gli avvisi per argomento funzionano solo con le notifiche «Subito»."
+   : notifPref.major.some(k => !notifPref.off.includes(k) && GAMES[k] && !GAMES[k].watch) ? "Anche se una patch è piccola, ti avviso se parla di uno di questi argomenti. Vale per i giochi impostati su «Solo grosse»."
+   : "Per usarli imposta almeno un gioco su «Solo grosse»: sugli altri ricevi già tutte le patch."));
   box.append(h("div", {class: "row-btns"}, h("button", {type: "button", class: "abtn", onclick: async () => {
    try { const reg = await navigator.serviceWorker.ready; await reg.showNotification("Game Patch Radar", {body: "Le notifiche funzionano ✓", icon: "icons/icon-192.png", badge: "icons/icon-192.png"}); } catch (e) { toast("Prova non riuscita"); }
   }}, "Invia una notifica di prova")));

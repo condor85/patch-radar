@@ -24,6 +24,7 @@ In entrambi i casi il sito si aggiorna da solo in circa un minuto.
 - **Notifiche**: solo patch vere per impostazione predefinita; opzioni per annunci/eventi, saldi, riepilogo serale (18:00) e ore silenziose (senza suono né vibrazione).
 - Testo regolabile (A−/A+).
 - **Solo patch grosse** (⚙ → Notifiche → per ogni gioco «Tutte» / «Solo grosse»): niente hotfix né correzioni minori. È «grossa» una patch con contenuti nuovi o cambi di bilanciamento (etichette automatiche), oppure con una versione x.0, una stagione o un'espansione nel titolo.
+- **Avvisi per argomento** (⚙ → Notifiche → «Avvisi per argomento»): scegli uno o più gruppi (Co-op e multiplayer, Crash e blocchi, Controller e Steam Deck, Mod e Workshop, Prestazioni, Lingua italiana). Se una patch piccola, che non sarebbe «grossa», parla di uno di questi argomenti nel titolo o nel testo, ricevi comunque la notifica. Valgono solo per i giochi impostati su «Solo grosse» (sugli altri arrivi già tutte le patch) e con le notifiche «Subito»; le patch grosse non vengono mai duplicate. L'elenco dei gruppi sta in `KEYWORD_GROUPS` (`scripts/fetch_news.py`) e in `KW_GROUPS` (`index.html`): vanno tenuti uguali (c'è un test).
 - **Novità rispetto alla patch precedente**: aprendo una patch uscita entro 3 settimane dalla precedente, un riquadro mostra le voci che prima non c'erano.
 - **Giochi da tenere d'occhio** (👁): per un gioco che non giochi ancora, arrivano solo le patch grosse e un avviso quando il prezzo scende sotto la soglia scelta. Si imposta da ⚙ → Amministratore (casella «Solo da tenere d'occhio» in aggiunta, oppure «👁 Osserva» su un gioco già presente) o a mano in `games.json`: `{"appid": 123, "watch": true, "target": 19.99}`.
 - **Squadra** (👥 in fondo alla pagina): tu e i tuoi amici entrate con un codice e un nome; su ogni gioco si tocca «🎮 Ci gioco» o «⭐ Mi interessa» e tutti vedono chi gioca a cosa, con prezzo e soglia. Il codice lo crea l'amministratore (⚙ → Amministratore → Squadra); dalla schermata Squadra si copia un link di invito. I dati stanno in un archivio privato sul ponte (non nel repository), servono il ponte Cloudflare e il suo ripubblicamento. Il codice protegge da estranei ma non è una password forte: va bene per amici fidati, e se finisce a qualcun altro basta crearne uno nuovo (i voti restano).
@@ -36,7 +37,7 @@ In entrambi i casi il sito si aggiorna da solo in circa un minuto.
 - **Ritmo delle patch**: dalle ultime patch vere l'app stima ogni quanto escono e quando è attesa la prossima («🔮 Patch ogni ~3 settimane · prossima verso il 2 dic»). Serve almeno 4 patch con ritmo abbastanza regolare, altrimenti non compare. È solo indicativa.
 - **Stato del ponte**: in ⚙ → Amministratore una riga dice se il ponte funziona e tra quanti giorni scade il token GitHub; se mancano 14 giorni o meno (o è scaduto) l'app lo segnala anche una volta al giorno all'apertura.
 
-Gli argomenti ntfy sono `<argomento>-<appid>` (patch), `-major` (solo patch grosse), `-news`, `-sale`, `-target` (prezzo sotto soglia), `-digest` e `-digest-major`.
+Gli argomenti ntfy sono `<argomento>-<appid>` (patch), `-major` (solo patch grosse), `-kw-<gruppo>` (patch piccole con una parola chiave: `coop`, `crash`, `controller`, `mod`, `perf`, `lang`), `-news`, `-sale`, `-target` (prezzo sotto soglia), `-digest` e `-digest-major`.
 
 ## Sicurezza
 
