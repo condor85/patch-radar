@@ -308,7 +308,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
 </div>
 
 <script>
-const APP_VERSION = "2026-11-14.1";
+const APP_VERSION = "2026-11-15.1";
 /* Se online c'è una versione più recente dell'app, la ricarica da sola (una volta sola per versione). */
 (async () => {
  if (location.protocol === "file:") return;
@@ -1584,8 +1584,8 @@ function setTopicLink() { renderNotif(); if (notifPref.on) syncNotif().catch(() 
 /* Notifiche push: l'app si iscrive da sola al servizio gratuito ntfy.sh (Web Push), senza installare altre app. */
 const NOTIF_KEY = "game_patch_radar_notif_v1";
 const NTFY = "https://ntfy.sh";
-/* major = giochi di cui si vogliono solo le patch grosse; off = giochi senza avvisi; mode = «now» (subito) o «digest» (riepilogo serale); news = anche annunci ed eventi; sale = saldi; quiet = ore senza suono */
-let notifPref = {on: false, off: [], major: [], kw: [], mode: "now", news: false, sale: false, quiet: {on: false, from: "23:00", to: "08:00"}};
+/* major = giochi di cui si vogliono solo le patch grosse; off = giochi senza avvisi; mode = «now» (subito) o «digest» (riepilogo serale); news = anche annunci, eventi e novità della scheda Steam; sale = saldi; stable = avviso «patch stabile»; quiet = ore senza suono */
+let notifPref = {on: false, off: [], major: [], kw: [], mode: "now", news: false, sale: false, stable: false, quiet: {on: false, from: "23:00", to: "08:00"}};
 /* Parole chiave: stessi id di KEYWORD_GROUPS in scripts/fetch_news.py. kw = gruppi scelti: avviso anche per le patch piccole che li contengono,
    ma solo sui giochi con «Solo grosse» (sugli altri arrivano già tutte le patch) e in modalità «Subito». */
 const KW_GROUPS = [["coop", "Co-op e multiplayer"], ["crash", "Crash e blocchi"], ["controller", "Controller e Steam Deck"], ["mod", "Mod e Workshop"], ["perf", "Prestazioni"], ["lang", "Lingua italiana"]];
@@ -1593,7 +1593,7 @@ let notifMsg = null;
 function loadNotif() {
  try {
   const d = JSON.parse(localStorage.getItem(NOTIF_KEY) || "null"), q = (d && d.quiet) || {};
-  if (d) notifPref = {on: !!d.on, off: d.off || [], major: Array.isArray(d.major) ? d.major : [], kw: Array.isArray(d.kw) ? d.kw.filter(x => KW_GROUPS.some(g => g[0] === x)) : [], mode: d.mode === "digest" ? "digest" : "now", news: !!d.news, sale: !!d.sale,
+  if (d) notifPref = {on: !!d.on, off: d.off || [], major: Array.isArray(d.major) ? d.major : [], kw: Array.isArray(d.kw) ? d.kw.filter(x => KW_GROUPS.some(g => g[0] === x)) : [], mode: d.mode === "digest" ? "digest" : "now", news: !!d.news, sale: !!d.sale, stable: !!d.stable,
    quiet: {on: !!q.on, from: q.from || "23:00", to: q.to || "08:00"}};
  } catch {}
 }
@@ -1619,8 +1619,9 @@ function topicList() {
   const major = g.watch || notifPref.major.includes(k);   // giochi osservati: sempre e solo patch grosse
   out.push((notifPref.mode === "digest" ? id + "-digest" : id) + (major ? "-major" : ""));
   if (notifPref.mode === "now" && !g.watch && notifPref.major.includes(k)) for (const w of notifPref.kw) out.push(id + "-kw-" + w);   // parole chiave nelle patch piccole
-  if (notifPref.news && !g.watch) out.push(id + "-news");
+  if (notifPref.news) out.push(id + "-news");   // per i giochi osservati il server manda qui solo le novità della scheda (italiano, DLC), non gli annunci
   if (notifPref.sale) out.push(id + "-sale");
+  if (notifPref.stable) out.push(id + "-stable");   // patch grossa senza hotfix da 48 ore
   if (g.watch && g.target) out.push(id + "-target");   // avviso quando il prezzo scende sotto la soglia
  }
  return out;
@@ -1711,8 +1712,9 @@ function renderNotif() {
   const seg = h("div", {class: "seg"});
   for (const [m, label] of [["now", "Subito"], ["digest", "Riepilogo serale"]]) seg.append(h("button", {type: "button", class: "abtn" + (notifPref.mode === m ? " on" : ""), onclick: () => notifPref.mode !== m && setPref({mode: m})}, label));
   box.append(seg, h("p", {class: "v-note"}, notifPref.mode === "digest" ? "Una sola notifica per gioco, verso le 18:00, con le patch uscite nella giornata." : "Una notifica appena esce una nuova patch."));
-  box.append(h("div", {class: "nrow"}, h("span", {}, "Includi anche annunci ed eventi"), switchEl(notifPref.news, on => setPref({news: on}))));
+  box.append(h("div", {class: "nrow"}, h("span", {}, "Includi anche annunci, eventi e novità del gioco (italiano, DLC…)"), switchEl(notifPref.news, on => setPref({news: on}))));
   box.append(h("div", {class: "nrow"}, h("span", {}, "Avvisami quando un gioco va in saldo"), switchEl(notifPref.sale, on => setPref({sale: on}))));
+  box.append(h("div", {class: "nrow"}, h("span", {}, "Avvisami quando una patch grossa è stabile (48 ore senza hotfix)"), switchEl(notifPref.stable, on => setPref({stable: on}))));
   const q = notifPref.quiet;
   box.append(h("div", {class: "nrow"}, h("span", {}, "Ore silenziose (senza suono né vibrazione)"), switchEl(q.on, on => setPref({quiet: {...q, on}}, false))));
   if (q.on) {

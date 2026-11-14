@@ -153,9 +153,43 @@ def clean_target(v):
     return round(float(v), 2)
 
 
+def _language_names(html):
+    """Nomi delle lingue da `supported_languages` (HTML: «English<strong>*</strong>, Italian, …»), in minuscolo."""
+    text = re.sub(r"<[^>]*>", "", re.sub(r"<br\s*/?>", ",", html or "", flags=re.I))   # il <br> separa l'ultima lingua dalla nota sull'audio
+    return {p.strip(" *\t\r\n").lower() for p in re.split(r"[,\n]", text)} - {""}
+
+
+def store_facts(data):
+    """Dati della scheda Steam che il «diario del gioco» confronta nel tempo: `it` (c'è l'italiano), `ea` (accesso anticipato),
+    `dlc` (quanti DLC). Un dato che Steam non fornisce non compare: così «sconosciuto» non si scambia per «è cambiato»."""
+    f = {}
+    if isinstance(data.get("supported_languages"), str):
+        f["it"] = "italian" in _language_names(data["supported_languages"])
+    if isinstance(data.get("genres"), list):
+        f["ea"] = any(isinstance(x, dict) and str(x.get("id")) == "70" for x in data["genres"])   # 70 = «Accesso anticipato»
+    if data.get("type"):
+        dlc = data.get("dlc")
+        f["dlc"] = len(dlc) if isinstance(dlc, list) else 0
+    return f
+
+
+def facts_changes(old, new):
+    """Novità della scheda rispetto alla volta prima, come lista di (titolo, messaggio). Solo cambi certi:
+    se un dato manca da una delle due parti non si segnala nulla."""
+    out = []
+    if old.get("it") is False and new.get("it") is True:
+        out.append(("ora in italiano", "Su Steam il gioco risulta ora disponibile in italiano."))
+    if old.get("ea") is True and new.get("ea") is False:
+        out.append(("esce dall'accesso anticipato", "Il gioco non è più in accesso anticipato su Steam."))
+    o, n = old.get("dlc"), new.get("dlc")
+    if isinstance(o, int) and isinstance(n, int) and n > o:
+        out.append(("nuovo DLC" if n - o == 1 else f"{n - o} nuovi DLC", "È comparso un nuovo contenuto aggiuntivo nella pagina Steam del gioco." if n - o == 1 else "Sono comparsi nuovi contenuti aggiuntivi nella pagina Steam del gioco."))
+    return out
+
+
 def store_details(appid):
-    """Nome, copertina ufficiale e prezzo dal negozio Steam (prezzi in euro). Alza un'eccezione se non disponibile."""
-    d = get_json(f"{STORE}/api/appdetails?appids={appid}&filters=basic,price_overview&cc=it&l=english")[str(appid)]
+    """Nome, copertina ufficiale, prezzo e dati della scheda dal negozio Steam (prezzi in euro). Alza un'eccezione se non disponibile."""
+    d = get_json(f"{STORE}/api/appdetails?appids={appid}&filters=basic,price_overview,genres&cc=it&l=english")[str(appid)]
     if not d.get("success"):
         raise RuntimeError("scheda non disponibile")
     data = d["data"]
@@ -165,7 +199,7 @@ def store_details(appid):
         price = {"final": po.get("final_formatted") or "", "initial": po.get("initial_formatted") or "", "discount": int(po.get("discount_percent") or 0)}
         if isinstance(po.get("final"), int) and not isinstance(po.get("final"), bool):
             price["cents"] = po["final"]
-    return {"name": data.get("name", ""), "image": data.get("header_image", ""), "price": price}
+    return {"name": data.get("name", ""), "image": data.get("header_image", ""), "price": price, "facts": store_facts(data)}
 
 
 def current_players(appid):
@@ -658,6 +692,36 @@ def notify_sale(name, appid, price):
     enqueue([f"{NTFY_TOPIC}-{appid}-sale"], f"{name} è in sconto", line, ["moneybag"], f"https://store.steampowered.com/app/{appid}/")
 
 
+def notify_facts(name, appid, title, message):
+    """Novità della scheda Steam (lingua italiana, fine dell'accesso anticipato, DLC): vanno al canale «novità» del gioco."""
+    enqueue([f"{NTFY_TOPIC}-{appid}-news"], f"{name}: {title}", message, ["tada"], f"https://store.steampowered.com/app/{appid}/")
+
+
+STABLE_HOURS = int(os.environ.get("STABLE_HOURS", "48"))   # ore senza nuove patch dopo una patch grossa
+STABLE_MAX_AGE = 7 * 86400                                  # oltre questa età una patch grossa non si segnala più
+
+
+def stable_candidate(items, now):
+    """Ultima patch grossa che ora si può dire «stabile»: nessuna patch successiva (hotfix) da STABLE_HOURS ore.
+    Ritorna (patch grossa, numero di hotfix arrivati dopo) oppure None."""
+    patches = [i for i in items if i.get("patch") and isinstance(i.get("date"), int)]
+    majors = [i for i in patches if is_major(i)]
+    if not majors:
+        return None
+    m = max(majors, key=lambda i: i["date"])
+    after = [i for i in patches if i["date"] > m["date"]]
+    last = max([m] + after, key=lambda i: i["date"])
+    if now - last["date"] < STABLE_HOURS * 3600 or now - m["date"] > STABLE_MAX_AGE:
+        return None
+    return m, len(after)
+
+
+def notify_stable(name, appid, major, hotfixes):
+    quiet = f"Nessun altro aggiornamento da {STABLE_HOURS} ore"
+    line = (f"{quiet}, dopo {hotfixes} hotfix." if hotfixes > 1 else f"{quiet}, dopo 1 hotfix." if hotfixes else f"Nessun hotfix nelle {STABLE_HOURS} ore dopo la patch.")
+    enqueue([f"{NTFY_TOPIC}-{appid}-stable"], f"{name}: la patch sembra stabile", f"{major.get('title') or 'Ultima patch'}\n{line}", ["white_check_mark"], major.get("url") or "")
+
+
 def price_reached(price, target):
     """True se il prezzo attuale è uguale o inferiore alla soglia (in euro)."""
     return bool(price and target and isinstance(price.get("cents"), int) and price["cents"] <= round(target * 100))
@@ -705,9 +769,11 @@ def main():
         o = old.get(key, {})
         name = g["name"] or o.get("name") or ""
         image, price = o.get("image") or "", o.get("price")
-        try:  # prezzo (può cambiare con i saldi) e, se mancano, nome e copertina
+        facts = dict(o.get("facts") or {})
+        try:  # prezzo (può cambiare con i saldi), dati della scheda e, se mancano, nome e copertina
             det = store_details(g["appid"])
             name, image, price = name or det["name"] or f"Gioco {g['appid']}", image or det["image"], det["price"]
+            facts.update(det.get("facts") or {})   # un dato non fornito da Steam non cancella quello già noto
         except Exception as e:  # noqa
             print(f"  scheda negozio non letta per {g['appid']}: {str(e)[:120]}", file=sys.stderr)
             name = name or f"Gioco {g['appid']}"
@@ -720,14 +786,29 @@ def main():
             items = o.get("items", [])
         classify(items)
         entry = {"appid": g["appid"], "name": name, "image": image, "price": price, "items": items}
+        if facts:
+            entry["facts"] = facts
         if g.get("watch"):
             entry["watch"], entry["target"] = True, g.get("target")
         games.append(entry)
     add_summaries(games, old)
     for g in games:
         o = old.get(str(g["appid"]))
+        # «patch stabile»: una sola volta per ogni patch grossa (si ricorda quale in `stable`); alla prima raccolta si segna senza avvisare
+        st = stable_candidate(g["items"], now)
+        if st and str(st[0].get("gid")) != (o or {}).get("stable"):
+            g["stable"] = str(st[0].get("gid"))
+            if o and o.get("items"):
+                print(f"STABILE {g['name']}: {st[0].get('title')} ({st[1]} hotfix)")
+                notify_stable(g["name"], g["appid"], st[0], st[1])
+        elif (o or {}).get("stable"):
+            g["stable"] = o["stable"]
         if not o or not o.get("items"):
             continue  # gioco nuovo o prima raccolta: nessuna notifica
+        if isinstance(o.get("facts"), dict) and isinstance(g.get("facts"), dict):   # diario del gioco: cambi sulla scheda Steam
+            for title, msg in facts_changes(o["facts"], g["facts"]):
+                print(f"SCHEDA {g['name']}: {title}")
+                notify_facts(g["name"], g["appid"], title, msg)
         known = {str(i["gid"]) for i in o["items"]}
         fresh = [i for i in g["items"] if str(i["gid"]) not in known]
         for it in fresh[:5]:

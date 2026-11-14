@@ -18,7 +18,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Sulle modifiche al codice (push su main) i test passano prima della pubblicazione; se falliscono il sito non cambia.
+  # Nei controlli programmati e a mano il test è saltato, così un test rotto non ferma l'arrivo delle nuove patch.
+  test:
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/tests.yml
+
   update:
+    needs: test
+    if: ${{ !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30   # un'esecuzione bloccata (es. Gemini che non risponde) non deve accodare tutte le successive
     environment:

@@ -36,9 +36,11 @@ In entrambi i casi il sito si aggiorna da solo in circa un minuto.
 - **Minimo registrato del prezzo**: l'Action salva in `data/prices.json` le variazioni di prezzo di ogni gioco; nella scheda compare il prezzo più basso visto finora («📉 Al minimo registrato» quando ci sei). Parte da quando l'app ha iniziato a seguire il gioco: non è il minimo assoluto di Steam.
 - **Ritmo delle patch**: dalle ultime patch vere l'app stima ogni quanto escono e quando è attesa la prossima («🔮 Patch ogni ~3 settimane · prossima verso il 2 dic»). Serve almeno 4 patch con ritmo abbastanza regolare, altrimenti non compare. È solo indicativa.
 - **Sincronizzazione tra dispositivi** (⚙ → Sincronizza tra dispositivi): «letto» e «salvati» seguono te su più telefoni o computer. Ognuno crea un proprio codice personale (nessun account) e lo scrive sugli altri dispositivi, oppure apre il link copiato dall'app. I dati stanno in un archivio privato sul ponte, uno per codice; chi non lo attiva continua come prima, con i dati solo nel browser. Il «letto» si unisce (una patch letta resta letta); per i salvati vince l'ultima azione (salvare o togliere). Parte da sola all'apertura e qualche secondo dopo ogni modifica. Il codice non è una password forte: chi lo conosce può leggere e modificare i salvati, quindi non va condiviso. Da lì si può scollegare un dispositivo o eliminare i dati dal ponte; un archivio non usato per 6 mesi viene cancellato.
+- **Novità della scheda Steam** («Includi anche annunci, eventi e novità del gioco»): l'Action confronta a ogni controllo la pagina Steam di ogni gioco (anche quelli con 👁) e avvisa quando compare la **lingua italiana**, quando il gioco **esce dall'accesso anticipato** o quando ci sono **nuovi DLC**. Solo cambi certi: se Steam non risponde o non fornisce il dato non parte nulla, e alla prima raccolta si memorizza lo stato senza avvisare. I dati stanno in `facts` dentro `data/news.json`.
+- **Patch stabile** (⚙ → Notifiche → «Avvisami quando una patch grossa è stabile», disattivato di base): dopo una patch grossa, l'avviso arriva solo quando passano 48 ore senza altre patch (hotfix). Se esce un hotfix il conto riparte; si avvisa una sola volta per patch grossa (si ricorda in `stable`) e non oltre 7 giorni dall'uscita. Le ore si cambiano con `STABLE_HOURS` in `scripts/fetch_news.py`.
 - **Stato del ponte**: in ⚙ → Amministratore una riga dice se il ponte funziona e tra quanti giorni scade il token GitHub; se mancano 14 giorni o meno (o è scaduto) l'app lo segnala anche una volta al giorno all'apertura.
 
-Gli argomenti ntfy sono `<argomento>-<appid>` (patch), `-major` (solo patch grosse), `-kw-<gruppo>` (patch piccole con una parola chiave: `coop`, `crash`, `controller`, `mod`, `perf`, `lang`), `-news`, `-sale`, `-target` (prezzo sotto soglia), `-digest` e `-digest-major`.
+Gli argomenti ntfy sono `<argomento>-<appid>` (patch), `-major` (solo patch grosse), `-kw-<gruppo>` (patch piccole con una parola chiave: `coop`, `crash`, `controller`, `mod`, `perf`, `lang`), `-news` (annunci e novità della scheda), `-stable` (patch grossa senza hotfix), `-sale`, `-target` (prezzo sotto soglia), `-digest` e `-digest-major`.
 
 ## Sicurezza
 
@@ -64,6 +66,8 @@ Se dopo la fase 2 non arriva più nulla, togli `ntfySignKey` da `config.json`: l
 Il controllo accoda le notifiche in `outbox.json` (non finisce nel repository); le invia un passo del workflow successivo, **solo dopo** aver salvato i dati con `git push`. Se il salvataggio fallisce la notifica non parte, e la volta dopo l'annuncio risulta ancora nuovo: niente notifiche doppie.
 
 ## Test
+
+Si lanciano da soli (`.github/workflows/tests.yml`) su ogni branch e pull request. Prima di pubblicare il sito, il workflow «Aggiorna patch» li rilancia a ogni push su `main`: se falliscono il sito non cambia. Nei controlli programmati (ogni ora) i test sono saltati, così un test rotto non ferma l'arrivo delle nuove patch. A mano:
 
 ```
 python3 -m unittest discover -s tests -v   # script di aggiornamento (fetch_news.py, firma, coda notifiche)

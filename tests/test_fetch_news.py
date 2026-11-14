@@ -546,5 +546,117 @@ class MajorAndWatchTests(unittest.TestCase):
         self.assertEqual(saved["games"][0]["target"], 20.0)
 
 
+def run_main(prev, fetched, details, topic="t", games_json=None):
+    """Lancia main() su una cartella temporanea e ritorna (notifiche accodate, news.json salvato)."""
+    files = {"games.json": games_json or {"games": [{"appid": 1, "name": "G1"}]}, "config.json": {"ntfyTopic": topic}, "data/news.json": prev}
+    with workdir(files):
+        with mock.patch.object(fn, "fetch_game", return_value=fetched), mock.patch.object(fn, "store_details", return_value=details), \
+                mock.patch.object(fn, "fetch_ntfy_key", return_value=""), mock.patch.object(fn, "update_players", return_value=False), mock.patch.object(fn, "GEMINI_KEY", ""), \
+                mock.patch.object(fn, "extractive_summary", return_value=""), mock.patch.object(fn, "NTFY_TOPIC", topic), \
+                contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+            fn.OUTBOX_ITEMS.clear()
+            fn.main()
+            queued = list(fn.OUTBOX_ITEMS)
+            fn.OUTBOX_ITEMS.clear()
+        saved = json.loads(read("data/news.json"))
+    return queued, saved
+
+
+class GameDiaryTests(unittest.TestCase):
+    """«Diario del gioco»: cambi sulla scheda Steam (italiano, accesso anticipato, DLC)."""
+
+    def test_store_facts_reads_language_early_access_and_dlc(self):
+        data = {"type": "game", "supported_languages": "English<strong>*</strong>, French, Italian<strong>*</strong><br><strong>*</strong>languages with full audio support",
+                "genres": [{"id": "1", "description": "Action"}, {"id": "70", "description": "Early Access"}], "dlc": [11, 22]}
+        self.assertEqual(fn.store_facts(data), {"it": True, "ea": True, "dlc": 2})
+
+    def test_store_facts_skips_what_steam_does_not_provide(self):
+        self.assertEqual(fn.store_facts({"name": "X"}), {})
+        self.assertEqual(fn.store_facts({"type": "game", "supported_languages": "English, German"}), {"it": False, "dlc": 0})
+
+    def test_italian_must_not_match_a_longer_name(self):
+        self.assertFalse(fn.store_facts({"supported_languages": "English, Italiano"})["it"])
+
+    def test_changes_are_reported_only_when_certain(self):
+        self.assertEqual([t for t, _ in fn.facts_changes({"it": False}, {"it": True})], ["ora in italiano"])
+        self.assertEqual([t for t, _ in fn.facts_changes({"ea": True}, {"ea": False})], ["esce dall'accesso anticipato"])
+        self.assertEqual([t for t, _ in fn.facts_changes({"dlc": 1}, {"dlc": 2})], ["nuovo DLC"])
+        self.assertEqual([t for t, _ in fn.facts_changes({"dlc": 1}, {"dlc": 4})], ["3 nuovi DLC"])
+        for old, new in (({"it": True}, {"it": False}), ({"ea": False}, {"ea": True}), ({"dlc": 3}, {"dlc": 2}), ({}, {"it": True}), ({"it": False}, {}), ({"it": True}, {"it": True})):
+            self.assertEqual(fn.facts_changes(old, new), [])
+
+    def _prev(self, facts):
+        items = [{"gid": "1", "title": "Vecchio", "contents": "x", "date": 1, "tags": []}]
+        game_entry = {"appid": 1, "name": "G1", "items": items}
+        if facts is not None:
+            game_entry["facts"] = facts
+        return items, {"updated": 1, "digest_ts": 4102444800, "games": [game_entry]}
+
+    def test_main_notifies_when_italian_arrives(self):
+        items, prev = self._prev({"it": False, "ea": False, "dlc": 0})
+        queued, saved = run_main(prev, items, {"name": "G1", "image": "", "price": None, "facts": {"it": True, "ea": False, "dlc": 0}})
+        self.assertEqual([m["topics"] for m in queued], [["t-1-news"]])
+        self.assertIn("ora in italiano", queued[0]["title"])
+        self.assertEqual(saved["games"][0]["facts"]["it"], True)
+
+    def test_main_is_silent_the_first_time_and_when_nothing_changes(self):
+        items, prev = self._prev(None)
+        queued, saved = run_main(prev, items, {"name": "G1", "image": "", "price": None, "facts": {"it": True}})
+        self.assertEqual(queued, [])
+        self.assertEqual(saved["games"][0]["facts"], {"it": True})
+        queued, _ = run_main(saved, items, {"name": "G1", "image": "", "price": None, "facts": {"it": True}})
+        self.assertEqual(queued, [])
+
+    def test_main_keeps_known_facts_when_steam_does_not_answer(self):
+        items, prev = self._prev({"it": False, "dlc": 2})
+        queued, saved = run_main(prev, items, {"name": "G1", "image": "", "price": None, "facts": {}})
+        self.assertEqual(queued, [])
+        self.assertEqual(saved["games"][0]["facts"], {"it": False, "dlc": 2})
+
+
+class StablePatchTests(unittest.TestCase):
+    """«Patch stabile»: nessun hotfix dopo STABLE_HOURS ore da una patch grossa."""
+    NOW = 1_800_000_000
+
+    def patch_item(self, gid, ago_hours, title="Update 1.0 è uscito", labels=("new",)):
+        return {"gid": gid, "title": title, "date": self.NOW - int(ago_hours * 3600), "patch": True, "labels": list(labels), "tags": ["patchnotes"]}
+
+    def test_major_without_hotfix_is_stable_after_the_window(self):
+        m = self.patch_item("a", 72)
+        self.assertEqual(fn.stable_candidate([m], self.NOW), (m, 0))
+        self.assertIsNone(fn.stable_candidate([self.patch_item("a", 47)], self.NOW))
+
+    def test_a_hotfix_restarts_the_window_and_is_counted(self):
+        m, hf = self.patch_item("a", 120), self.patch_item("b", 30, "Hotfix 1.0.1", ("bug",))
+        self.assertIsNone(fn.stable_candidate([m, hf], self.NOW))
+        hf_old = self.patch_item("b", 60, "Hotfix 1.0.1", ("bug",))
+        self.assertEqual(fn.stable_candidate([m, hf_old], self.NOW), (m, 1))
+
+    def test_old_or_missing_major_gives_nothing(self):
+        self.assertIsNone(fn.stable_candidate([self.patch_item("a", 24 * 8)], self.NOW))
+        self.assertIsNone(fn.stable_candidate([self.patch_item("h", 100, "Hotfix 1.0.1", ("bug",))], self.NOW))
+        self.assertIsNone(fn.stable_candidate([], self.NOW))
+
+    def _items(self):
+        return [{"gid": "a", "title": "Update 1.0 è uscito", "contents": "x" * 300, "date": int(__import__("time").time()) - 3 * 86400, "tags": ["patchnotes"]}]
+
+    def test_main_notifies_once_per_major_patch(self):
+        items = self._items()
+        prev = {"updated": 1, "digest_ts": 4102444800, "games": [{"appid": 1, "name": "G1", "items": items}]}
+        det = {"name": "G1", "image": "", "price": None}
+        queued, saved = run_main(prev, items, det)
+        self.assertEqual([m["topics"] for m in queued], [["t-1-stable"]])
+        self.assertIn("Nessun hotfix", queued[0]["message"])
+        self.assertEqual(saved["games"][0]["stable"], "a")
+        queued, saved2 = run_main(saved, items, det)
+        self.assertEqual(queued, [])
+        self.assertEqual(saved2["games"][0]["stable"], "a")
+
+    def test_first_collection_marks_without_notifying(self):
+        queued, saved = run_main({}, self._items(), {"name": "G1", "image": "", "price": None})
+        self.assertEqual(queued, [])
+        self.assertEqual(saved["games"][0]["stable"], "a")
+
+
 if __name__ == "__main__":
     unittest.main()

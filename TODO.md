@@ -20,4 +20,6 @@ Idee per Game Patch Radar, in ordine di priorità.
 - [x] Squadra: messaggio pronto per WhatsApp, saldi di gruppo (in app), sessioni di gioco con .ics, note sulle patch
 - [x] Minimo registrato del prezzo e stima del ritmo delle patch
 - [x] Avvisi per argomento (co-op, crash, controller, mod, prestazioni, lingua italiana) anche per le patch piccole
-
+- [x] Test automatici prima della pubblicazione (`.github/workflows/tests.yml`)
+- [x] Diario del gioco: avviso per lingua italiana, uscita dall'accesso anticipato, nuovi DLC
+- [x] Notifica «patch stabile» dopo 48 ore senza hotfix
