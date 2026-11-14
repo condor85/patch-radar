@@ -120,6 +120,9 @@ button{font:inherit;cursor:pointer}
 .tabs::-webkit-scrollbar{display:none}
 .game{flex:0 0 auto;display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--panel);color:var(--nav-text);border-radius:12px;padding:4px 11px 4px 4px;font-weight:650;font-size:13px;white-space:nowrap}
 .game .cover{display:block;width:46px;height:22px;object-fit:cover;border-radius:7px;background:var(--soft);flex:0 0 auto}
+.cover.ph,.hcover.ph{display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;letter-spacing:.04em;user-select:none}
+.cover.ph{font-size:10px;flex:0 0 auto}
+.hcover.ph{font-size:34px}
 .game.active{background:var(--sel-bg);border-color:var(--sel-line);color:var(--text-strong)}
 .game.has-new:not(.active){border-color:var(--green-line)}
 .newtxt{font-size:10px;font-weight:800;color:var(--green);background:var(--green-bg);border:1px solid var(--green-line);border-radius:99px;padding:1px 7px}
@@ -370,7 +373,6 @@ let firstRun = false;
 let lastTotal = null;
 let autoPicked = false;
 let shownAt = Date.now();
-const viewed = {};
 function loadSeen() {
  try { const d = JSON.parse(localStorage.getItem(SEEN_KEY) || "null"); if (d) { seen = d.seen || {}; lastVisit = prevVisit = d.lastVisit || 0; } } catch {}
 }
@@ -403,9 +405,16 @@ function markRead(key) {
  seen[key] = [...new Set([...cache[key].map(i => String(i.gid)), ...seen[key]])].slice(0, 80);
  saveSeen();
 }
+function markItemRead(key, item) {
+ if (!item || !seen[key]) return false;
+ const gid = String(item.gid);
+ if (seen[key].includes(gid)) return false;
+ seen[key] = [gid, ...seen[key]].slice(0, 80);
+ saveSeen();
+ return true;
+}
 function markAllRead() { visibleKeys().forEach(markRead); render(); updateTitle(); }
 function flush() {
- if (Date.now() - shownAt > 5000 && viewed[selected]) markRead(selected);
  lastVisit = Date.now(); saveSeen();
 }
 function updateTitle() {
@@ -431,7 +440,7 @@ function renderNav() {
   const n = newItems(k).length;
   const b = document.createElement("button"); b.type = "button";
   b.className = "game" + (k === selected && !home ? " active" : "") + (n ? " has-new" : "");
-  b.append(coverImg(GAMES[k].appid, "cover", GAMES[k].image), document.createTextNode(GAMES[k].name));
+  b.append(coverImg(GAMES[k].appid, "cover", GAMES[k].image, GAMES[k].name), document.createTextNode(GAMES[k].name));
   if (n) { const t = document.createElement("span"); t.className = "newtxt"; t.textContent = n + (n === 1 ? " nuovo" : " nuovi"); b.append(t); }
   b.addEventListener("click", () => selectGame(k));
   list.append(b);
@@ -463,13 +472,10 @@ function renderBanner() {
  el.append(t, recap, all, chips);
 }
 function goHome() {
- if (!home && viewed[selected] && !crossGame()) markRead(selected);
- viewed[selected] = false;
  home = true; query = ""; savedView = false; searchOpen = false; $("q").value = ""; showLimit = PAGE;
  render(); window.scrollTo(0, 0);
 }
 function selectGame(k) {
- if ((k !== selected || home) && viewed[selected] && !crossGame()) markRead(selected);
  home = false;
  query = ""; savedView = false; searchOpen = false; $("q").value = ""; showLimit = PAGE;
  selected = k; render(); window.scrollTo(0, 0);
@@ -542,13 +548,20 @@ function renderRich(el, text) {
  }
 }
 function versionOf(title) { const m = /\bv?(\d+(?:\.\d+){1,3}[a-z]?)\b/i.exec(title || ""); return m ? m[1] : ""; }
-function coverImg(appid, cls, image) {
+function coverImg(appid, cls, image, name) {
  const urls = (image ? [image] : []).concat(["https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/" + appid + "/header.jpg",
   "https://cdn.cloudflare.steamstatic.com/steam/apps/" + appid + "/header.jpg", "https://cdn.akamai.steamstatic.com/steam/apps/" + appid + "/header.jpg"]);
  const img = document.createElement("img"); img.className = cls; img.alt = ""; img.loading = "lazy"; img.decoding = "async";
  let i = 0; img.src = urls[0];
- img.onerror = () => { i++; if (i < urls.length) img.src = urls[i]; else img.remove(); };
+ img.onerror = () => { i++; if (i < urls.length) img.src = urls[i]; else img.replaceWith(coverPlaceholder(appid, cls, name)); };
  return img;
+}
+function coverPlaceholder(appid, cls, name) {
+ const words = String(name || "").replace(/[^\p{L}\p{N} ]/gu, " ").split(/\s+/).filter(Boolean);
+ const ini = (words.length > 1 ? words[0][0] + words[1][0] : (words[0] || "?").slice(0, 2)).toUpperCase();
+ const ph = document.createElement("div"); ph.className = cls + " ph"; ph.textContent = ini; ph.setAttribute("aria-hidden", "true");
+ ph.style.background = "hsl(" + ((Number(appid) || 0) * 47 % 360) + " 38% 36%)";
+ return ph;
 }
 async function shareItem(item, gameName) {
  const url = item.url || ""; const title = gameName + ": " + (item.title || "Aggiornamento");
@@ -715,15 +728,23 @@ function toggleSaved(key, item) {
 
 /* ---------- Schermo intero, con scorrimento tra le pubblicazioni ---------- */
 let viewerList = [], viewerIdx = -1, viewerItem = null;
+function markViewerRead() {
+ const e = viewerList[viewerIdx];
+ if (e && markItemRead(e.key, e.item)) viewerMarked = true;
+}
+let viewerMarked = false;
 function openViewer(list, i) {
- viewerList = list; viewerIdx = i; renderViewer();
+ viewerList = list; viewerIdx = i; markViewerRead(); renderViewer();
  openOv("viewer"); $("vBody").scrollTop = 0; $("vClose").focus();
 }
-function closeViewer() { viewerItem = null; viewerList = []; viewerIdx = -1; closeOv("viewer"); }
+function closeViewer() {
+ viewerItem = null; viewerList = []; viewerIdx = -1; closeOv("viewer");
+ if (viewerMarked) { viewerMarked = false; render(); }   // le schede aperte perdono l'etichetta «NUOVO»
+}
 function viewerGo(d) {
  const j = viewerIdx + d;
  if (j < 0 || j >= viewerList.length) return;
- viewerIdx = j; renderViewer(); $("vBody").scrollTop = 0;
+ viewerIdx = j; markViewerRead(); renderViewer(); $("vBody").scrollTop = 0;
 }
 function warnEl() {
  const w = document.createElement("div"); w.className = "warn";
@@ -1133,7 +1154,6 @@ function agoLabel(unix) {
  try { return new Intl.DateTimeFormat("it-IT", {day: "numeric", month: "short", year: "numeric"}).format(new Date(unix * 1000)); } catch { return ""; }
 }
 function openFromHome(list, idx) {
- markRead(list[idx].key);
  openViewer(list, idx);
  render();
 }
@@ -1151,7 +1171,7 @@ function buildHomeCard(entry, list, idx) {
  const lb = labelsEl(item); if (lb) body.append(lb);
  if (text) body.append(h("p", {class: "hsum"}, text));
  body.append(h("div", {class: "actions"}, mkBtn("Leggi", () => openFromHome(list, idx), "pri"), mkBtn("Tutte le patch ›", () => selectGame(key))));
- article.append(coverImg(game.appid, "hcover", game.image), body);
+ article.append(coverImg(game.appid, "hcover", game.image, game.name), body);
  article.addEventListener("click", e => { if (!e.target.closest("button, a")) openFromHome(list, idx); });
  return article;
 }
@@ -1187,6 +1207,7 @@ function buildCard(entry, list, idx) {
  const actions = h("div", {class: "actions"});
  const sv = isSaved(key, item);
  actions.append(mkBtn("Leggi", () => openViewer(list, idx), "pri"));
+ if (fresh) actions.append(mkBtn("✓ Letta", () => { if (markItemRead(key, item)) { render(); updateTitle(); } }));
  actions.append(mkBtn(tr ? "↩ Originale" : "🌐 Traduci", b => toggleTranslate(item, b)));
  actions.append(iconBtn(sv ? "★" : "☆", sv ? "Togli dai salvati" : "Salva", () => toggleSaved(key, item), sv));
  actions.append(iconBtn("↗", "Condividi", () => shareItem(item, game.name)));
@@ -1259,7 +1280,6 @@ function renderStale() {
 function render() {
  const cross = crossGame(), onHome = isHome(), game = GAMES[selected];
  const all = onHome ? [] : baseEntries();
- if (!onHome && !cross && cache[selected]) viewed[selected] = true;
  renderNav(); renderBanner(); renderStale(); renderMeta(); renderFilters(); renderBell(); updateTitle();
  $("gameTitle").textContent = savedView ? "★ Salvati" : query.trim() ? "Ricerca" : onHome ? "Ultime patch" : game.name;
  const box = $("cards"); box.innerHTML = ""; box.classList.toggle("home", onHome);
@@ -1504,7 +1524,7 @@ function openRecap() {
  let last = null;
  entries.forEach((entry, i) => {
   const {key, item} = entry;
-  if (key !== last) { last = key; body.append(h("div", {class: "rgame"}, coverImg(GAMES[key].appid, "cover", GAMES[key].image), h("b", {}, GAMES[key].name))); }
+  if (key !== last) { last = key; body.append(h("div", {class: "rgame"}, coverImg(GAMES[key].appid, "cover", GAMES[key].image, GAMES[key].name), h("b", {}, GAMES[key].name))); }
   const text = item.summary || (fullText(item).replace(/\s+/g, " ").slice(0, 220) + (fullText(item).length > 220 ? "…" : ""));
   const card = h("div", {class: "rcard"}, h("span", {class: "date"}, dateLabel(item.date)), h("h3", {}, (item.it && item.it.title) || item.title || "Aggiornamento"));
   const lb = labelsEl(item); if (lb) card.append(lb);

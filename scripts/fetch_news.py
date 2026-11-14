@@ -253,14 +253,33 @@ def gemini_call(system, user, max_tokens=2000, timeout=120):
     raise RuntimeError(" || ".join(errors))
 
 
+LEAK_RE = re.compile(
+    r"\*\*|\bword count\b|\bconstraints?\b|\bpoint \d+\b|\bmax(?:imum)? \d+\b|\bdraft(?:ing)?\b|\blet me\b|\blet's\b"
+    r"|\bcheck(?:ing)?\b.*:|\bwait\b|\bself-?correction\b|\bthe user\b|\bsystem prompt\b|\byes\s*\(|\bno\s*\(\d+",
+    re.I)
+WORDS_TAIL_RE = re.compile(r"\s*\(\d+\s*(?:words?|parole)\)\s*\.?\s*$", re.I)
+
+
+def clean_ai_summary(text):
+    """Toglie dal testo dell'IA le righe di servizio (ragionamento, conteggio parole, «Point 1:»…).
+    Ritorna "" se non resta almeno un punto elenco sensato, così il riassunto viene rifatto o sostituito."""
+    out = []
+    for raw in (text or "").split("\n"):
+        l = WORDS_TAIL_RE.sub("", raw.strip())
+        l = l.lstrip("-*• ").strip()
+        if len(l) < 12 or l.endswith(":") or LEAK_RE.search(l):
+            continue
+        out.append("• " + l)
+    return "\n".join(out)[:900]
+
+
 def summarize(name, item):
     """Riassunto in italiano con Gemini. Ritorna "" se non disponibile."""
     body = clean(item.get("contents"))[:30000]
     if not GEMINI_KEY or len(body) < 300:
         return ""
     text = gemini_call(SYSTEM_PROMPT, f"Gioco: {name}\nTitolo: {item.get('title')}\n\n{body}")
-    lines = [l.strip() for l in text.split("\n") if l.strip()]
-    return "\n".join(l if l.startswith("•") else "• " + l.lstrip("-*• ") for l in lines)[:900]
+    return clean_ai_summary(text)
 
 
 TRANSLATE_PROMPT = """Sei un traduttore professionista di videogiochi. Traduci in italiano le note di aggiornamento che ricevi.
@@ -370,7 +389,10 @@ def add_summaries(games, old):
         for it in g["items"]:
             p = prev.get(str(it["gid"]))
             if p and p.get("summary"):
-                it["summary"], it["summary_src"] = p["summary"], p.get("summary_src", "simple")
+                src = p.get("summary_src", "simple")
+                text = clean_ai_summary(p["summary"]) if src == "ai" else p["summary"]
+                if text:  # se l'IA aveva lasciato solo righe di servizio, il riassunto viene rifatto
+                    it["summary"], it["summary_src"] = text, src
             if p and p.get("it"):
                 it["it"] = p["it"]
             if p and p.get("it_fail"):

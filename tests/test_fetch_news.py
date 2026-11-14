@@ -370,5 +370,32 @@ class Players(unittest.TestCase):
                     fn.current_players(1)
 
 
+class CleanAiSummaryTests(unittest.TestCase):
+    def test_drops_reasoning_lines_and_word_counts(self):
+        raw = ("• Check word count and constraints:**\n• Point 1:\n"
+               "• Le ricette fissate ora rimangono correttamente bloccate nell'interfaccia. (9 words)\n"
+               "• Max 20 words? Yes (9 <= 20).\n• Point 2:\n"
+               "• Risolti diversi crash del gioco legati al salvataggio.")
+        self.assertEqual(fn.clean_ai_summary(raw),
+                         "• Le ricette fissate ora rimangono correttamente bloccate nell'interfaccia.\n"
+                         "• Risolti diversi crash del gioco legati al salvataggio.")
+
+    def test_only_service_lines_gives_empty(self):
+        self.assertEqual(fn.clean_ai_summary("• Check word count and constraints:**\n• Point 1:"), "")
+
+    def test_normal_summary_is_kept_and_bulleted(self):
+        raw = "- Aggiunta la nuova modalità cooperativa fino a quattro giocatori.\n* Bilanciate le armi a lungo raggio."
+        self.assertEqual(fn.clean_ai_summary(raw),
+                         "• Aggiunta la nuova modalità cooperativa fino a quattro giocatori.\n• Bilanciate le armi a lungo raggio.")
+
+    def test_old_polluted_ai_summary_is_redone(self):
+        old = {"1": {"items": [{"gid": "10", "summary": "• Check word count and constraints:**\n• Point 1:", "summary_src": "ai"}]}}
+        games = [game(1, ["Patch"])]
+        games[0]["items"][0]["gid"] = "10"
+        with mock.patch.object(fn, "GEMINI_KEY", ""), mock.patch.object(fn, "extractive_summary", return_value="• ok semplice"):
+            fn.add_summaries(games, old)
+        self.assertEqual(games[0]["items"][0]["summary"], "• ok semplice")
+
+
 if __name__ == "__main__":
     unittest.main()
