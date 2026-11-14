@@ -35,6 +35,7 @@ In entrambi i casi il sito si aggiorna da solo in circa un minuto.
 - **Annulla**: dopo aver aggiunto o eliminato un gioco dal telefono compare per 10 secondi il pulsante «Annulla».
 - **Minimo registrato del prezzo**: l'Action salva in `data/prices.json` le variazioni di prezzo di ogni gioco; nella scheda compare il prezzo più basso visto finora («📉 Al minimo registrato» quando ci sei). Parte da quando l'app ha iniziato a seguire il gioco: non è il minimo assoluto di Steam.
 - **Ritmo delle patch**: dalle ultime patch vere l'app stima ogni quanto escono e quando è attesa la prossima («🔮 Patch ogni ~3 settimane · prossima verso il 2 dic»). Serve almeno 4 patch con ritmo abbastanza regolare, altrimenti non compare. È solo indicativa.
+- **Sincronizzazione tra dispositivi** (⚙ → Sincronizza tra dispositivi): «letto» e «salvati» seguono te su più telefoni o computer. Ognuno crea un proprio codice personale (nessun account) e lo scrive sugli altri dispositivi, oppure apre il link copiato dall'app. I dati stanno in un archivio privato sul ponte, uno per codice; chi non lo attiva continua come prima, con i dati solo nel browser. Il «letto» si unisce (una patch letta resta letta); per i salvati vince l'ultima azione (salvare o togliere). Parte da sola all'apertura e qualche secondo dopo ogni modifica. Il codice non è una password forte: chi lo conosce può leggere e modificare i salvati, quindi non va condiviso. Da lì si può scollegare un dispositivo o eliminare i dati dal ponte; un archivio non usato per 6 mesi viene cancellato.
 - **Stato del ponte**: in ⚙ → Amministratore una riga dice se il ponte funziona e tra quanti giorni scade il token GitHub; se mancano 14 giorni o meno (o è scaduto) l'app lo segnala anche una volta al giorno all'apertura.
 
 Gli argomenti ntfy sono `<argomento>-<appid>` (patch), `-major` (solo patch grosse), `-kw-<gruppo>` (patch piccole con una parola chiave: `coop`, `crash`, `controller`, `mod`, `perf`, `lang`), `-news`, `-sale`, `-target` (prezzo sotto soglia), `-digest` e `-digest-major`.
@@ -69,4 +70,5 @@ python3 -m unittest discover -s tests -v   # script di aggiornamento (fetch_news
 node tests/sw.test.js                      # service worker (cache, notifiche, firme verificate con WebCrypto)
 node tests/worker.test.mjs                 # ponte di amministrazione
 node tests/cadence.test.js                 # stima del ritmo delle patch
+node tests/sync-client.test.mjs            # sincronizzazione «letto» e «salvati» (app + ponte)
 ```
