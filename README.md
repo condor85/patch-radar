@@ -32,6 +32,8 @@ In entrambi i casi il sito si aggiorna da solo in circa un minuto.
 - **Saldi di gruppo**: un riquadro in home e nella schermata Squadra segnala i giochi in sconto (almeno −10%) scelti da due o più amici. Compare quando apri l'app; non invia notifiche.
 - **💬 Al gruppo**: nel visualizzatore di una patch, un messaggio pronto per WhatsApp con gioco, versione, riassunto in italiano e link (non contiene il codice della squadra).
 - **Annulla**: dopo aver aggiunto o eliminato un gioco dal telefono compare per 10 secondi il pulsante «Annulla».
+- **Minimo registrato del prezzo**: l'Action salva in `data/prices.json` le variazioni di prezzo di ogni gioco; nella scheda compare il prezzo più basso visto finora («📉 Al minimo registrato» quando ci sei). Parte da quando l'app ha iniziato a seguire il gioco: non è il minimo assoluto di Steam.
+- **Ritmo delle patch**: dalle ultime patch vere l'app stima ogni quanto escono e quando è attesa la prossima («🔮 Patch ogni ~3 settimane · prossima verso il 2 dic»). Serve almeno 4 patch con ritmo abbastanza regolare, altrimenti non compare. È solo indicativa.
 - **Stato del ponte**: in ⚙ → Amministratore una riga dice se il ponte funziona e tra quanti giorni scade il token GitHub; se mancano 14 giorni o meno (o è scaduto) l'app lo segnala anche una volta al giorno all'apertura.
 
 Gli argomenti ntfy sono `<argomento>-<appid>` (patch), `-major` (solo patch grosse), `-news`, `-sale`, `-target` (prezzo sotto soglia), `-digest` e `-digest-major`.
@@ -42,7 +44,7 @@ Gli argomenti ntfy sono `<argomento>-<appid>` (patch), `-major` (solo patch gros
 - **Ponte di amministrazione**: il token GitHub sta solo sul ponte (Cloudflare); il telefono conosce una password. Vedi `worker/README.md`.
 - **Token di amministrazione** (metodo alternativo, senza ponte): è salvato nel browser. Usa un token *fine-grained* limitato a questo repository (Contents: lettura e scrittura) con scadenza (90 giorni); alla scadenza l'app lo scarta e ne chiede uno nuovo.
 - **Content-Security-Policy**: `index.html` limita i domini con cui la pagina può comunicare. Se aggiungi un servizio esterno al codice, aggiungilo anche a `connect-src` (o `img-src`).
-- **Servizi di terzi**: l'app legge solo dati del proprio sito (`data/news.json`, `data/players.json`) e, per lo stato dell'Action, `api.github.com`. Anche i giocatori online li legge l'Action. L'unico uso di servizi esterni (proxy CORS) è la **ricerca per nome** nell'amministrazione, e parte solo dopo conferma; incollando il link Steam del gioco (o il numero) non si usa nulla di esterno e il nome lo ricava l'Action.
+- **Servizi di terzi**: l'app legge solo dati del proprio sito (`data/news.json`, `data/players.json`, `data/prices.json`) e, per lo stato dell'Action, `api.github.com`. Anche i giocatori online li legge l'Action. L'unico uso di servizi esterni (proxy CORS) è la **ricerca per nome** nell'amministrazione, e parte solo dopo conferma; incollando il link Steam del gioco (o il numero) non si usa nulla di esterno e il nome lo ricava l'Action.
 - Il nome dell'argomento è letto da `config.json`; il secret `NTFY_TOPIC` vale solo come ripiego.
 
 ### Notifiche firmate (consigliato)
@@ -65,4 +67,5 @@ Il controllo accoda le notifiche in `outbox.json` (non finisce nel repository); 
 python3 -m unittest discover -s tests -v   # script di aggiornamento (fetch_news.py, firma, coda notifiche)
 node tests/sw.test.js                      # service worker (cache, notifiche, firme verificate con WebCrypto)
 node tests/worker.test.mjs                 # ponte di amministrazione
+node tests/cadence.test.js                 # stima del ritmo delle patch
 ```

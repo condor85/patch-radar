@@ -341,7 +341,7 @@ function setGames(list) {
  const g = {};
  for (const x of list) {
   const k = String(x.appid);
-  g[k] = {name: x.name || ("Gioco " + k), appid: x.appid, image: x.image || "", price: x.price || null, players: x.players || null, watch: x.watch === true, target: typeof x.target === "number" ? x.target : null, store: "https://store.steampowered.com/app/" + x.appid + "/"};
+  g[k] = {name: x.name || ("Gioco " + k), appid: x.appid, image: x.image || "", price: x.price || null, players: x.players || null, pmin: x.pmin || null, watch: x.watch === true, target: typeof x.target === "number" ? x.target : null, store: "https://store.steampowered.com/app/" + x.appid + "/"};
  }
  GAMES = g; ORDER = list.map(x => String(x.appid)).filter((k, i, a) => a.indexOf(k) === i);
 }
@@ -367,7 +367,7 @@ function applyPending(list) {
  return list.filter(g => !gone.has(String(g.appid))).map(g => { const w = ww.get(String(g.appid)); return w ? {...g, watch: w.watch, target: w.watch ? w.target : null} : g; })
   .concat(pending.add.map(g => ({appid: g.appid, name: g.name, image: "", watch: g.watch === true, target: g.target ?? null})));
 }
-function currentList() { return ORDER.map(k => ({appid: GAMES[k].appid, name: GAMES[k].name, image: GAMES[k].image, price: GAMES[k].price, players: GAMES[k].players, watch: GAMES[k].watch, target: GAMES[k].target})); }
+function currentList() { return ORDER.map(k => ({appid: GAMES[k].appid, name: GAMES[k].name, image: GAMES[k].image, price: GAMES[k].price, players: GAMES[k].players, pmin: GAMES[k].pmin, watch: GAMES[k].watch, target: GAMES[k].target})); }
 const STORE_KEY = "game_patch_radar_v3";
 const REFRESH_MS = 30 * 60 * 1000;
 const PREVIEW_CHARS = 450;
@@ -517,7 +517,7 @@ function selectGame(k) {
 function persistable() {
  const c = {}; for (const [k, v] of Object.entries(cache)) c[k] = v.slice(0, 20).map(({it, ...r}) => r);
  const tc = {}; for (const [k, v] of Object.entries(trCache)) if (v.src !== "gemini") tc[k] = v;
- return {cache: c, trCache: tc, games: Object.values(GAMES).map(g => ({appid: g.appid, name: g.name, image: g.image, price: g.price, watch: g.watch, target: g.target}))};
+ return {cache: c, trCache: tc, games: Object.values(GAMES).map(g => ({appid: g.appid, name: g.name, image: g.image, price: g.price, pmin: g.pmin, watch: g.watch, target: g.target}))};
 }
 function save() {
  const d = persistable();
@@ -639,13 +639,17 @@ let snapshot = null;
 async function loadSnapshot() {
  if (location.protocol === "file:") return null;
  try {
-  const [r, pr] = await Promise.all([fetch("data/news.json?t=" + Date.now(), {cache: "no-store"}), fetch("data/players.json?t=" + Date.now(), {cache: "no-store"}).catch(() => null)]);
+  const [r, pr, pp] = await Promise.all([fetch("data/news.json?t=" + Date.now(), {cache: "no-store"}), fetch("data/players.json?t=" + Date.now(), {cache: "no-store"}).catch(() => null), fetch("data/prices.json?t=" + Date.now(), {cache: "no-store"}).catch(() => null)]);
   if (!r.ok) return null;
   const d = await r.json();
   if (!d || !Array.isArray(d.games)) return null;
   try {   // giocatori online (file a parte): se manca o è rotto, semplicemente non si mostrano
    const pl = pr && pr.ok ? (await pr.json()).games || {} : {};
    for (const g of d.games) g.players = pl[String(g.appid)] || null;
+  } catch {}
+  try {   // storico prezzi (file a parte): il minimo registrato; se manca o è rotto, non si mostra
+   const pm = pp && pp.ok ? (await pp.json()).games || {} : {};
+   for (const g of d.games) { const m = (pm[String(g.appid)] || {}).min; g.pmin = m && Number.isFinite(m.c) ? {cents: m.c, final: String(m.f || ""), ts: m.ts || 0} : null; }
   } catch {}
   return d;
  } catch { return null; }
@@ -1400,6 +1404,23 @@ function toggleSearch() {
 }
 
 /* Giocatori online: li legge il server (GitHub Action) e li pubblica in data/players.json; l'app non interroga più Steam attraverso proxy di terzi */
+/* PATCH-CADENCE:start */
+/* Ritmo delle patch: mediana degli intervalli tra le ultime patch vere. Serve almeno 4 patch e un ritmo non troppo irregolare. */
+function patchCadence(items, nowSec) {
+ const ds = (items || []).filter(isPatchItem).map(i => i.date).filter(Number.isFinite).sort((a, b) => b - a).slice(0, 8);
+ if (ds.length < 4) return null;
+ const gaps = []; for (let i = 0; i < ds.length - 1; i++) gaps.push(ds[i] - ds[i + 1]);
+ const sorted = [...gaps].sort((a, b) => a - b), mid = Math.floor(sorted.length / 2);
+ const med = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+ const day = 86400;
+ if (med < day) return null;
+ const spread = (sorted[sorted.length - 1] - sorted[0]) / med;   // quanto sono irregolari gli intervalli
+ if (spread > 6) return null;
+ const next = ds[0] + med;
+ if (nowSec > next + 2 * med) return null;   // in ritardo di molto: il ritmo non vale più, meglio non dire nulla
+ return {everyDays: Math.round(med / day), next, overdueDays: nowSec > next ? Math.floor((nowSec - next) / day) : 0};
+}
+/* PATCH-CADENCE:end */
 function renderMeta() {
  const el = $("meta"); el.innerHTML = "";
  if (home || crossGame() || !GAMES[selected]) return;
@@ -1413,6 +1434,17 @@ function renderMeta() {
   const sale = p.discount > 0;
   el.append(h("a", {class: "mchip" + (sale ? " sale" : ""), href: g.store, target: "_blank", rel: "noopener noreferrer", title: "Apri la pagina Steam"},
    sale ? "🏷 −" + p.discount + "% · " + p.final + (p.initial ? " (era " + p.initial + ")" : "") : "💶 " + p.final));
+ }
+ if (g.pmin && p && typeof p.cents === "number" && g.pmin.cents > 0) {
+  const atMin = p.cents <= g.pmin.cents;
+  el.append(h("span", {class: "mchip" + (atMin ? " sale" : ""), title: "Prezzo più basso visto dall'app da quando segue questo gioco (non è il minimo assoluto di Steam)"},
+   atMin ? "📉 Al minimo registrato" : "📉 Minimo registrato " + g.pmin.final));
+ }
+ const cad = patchCadence(cache[selected], Date.now() / 1000);
+ if (cad) {
+  const every = cad.everyDays >= 14 ? "~" + Math.round(cad.everyDays / 7) + " settimane" : "~" + cad.everyDays + (cad.everyDays === 1 ? " giorno" : " giorni");
+  const txt = cad.overdueDays > 0 ? "attesa da " + (cad.overdueDays === 1 ? "1 giorno" : cad.overdueDays + " giorni") : "prossima verso il " + new Date(cad.next * 1000).toLocaleDateString("it-IT", {day: "numeric", month: "short"});
+  el.append(h("span", {class: "mchip", title: "Stima dal ritmo delle ultime patch: è solo indicativa"}, "🔮 Patch ogni " + every + " · " + txt));
  }
  teamChips(el, g);
  const pl = g.players;

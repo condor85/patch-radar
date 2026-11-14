@@ -19,5 +19,6 @@ Idee per Game Patch Radar, in ordine di priorità.
 - [ ] (rimandato) Altre fonti oltre a Steam
 - [x] Squadra: «Ci gioco» / «Mi interessa», codice del gruppo, schermata Squadra
 - [x] Squadra: messaggio pronto per WhatsApp, saldi di gruppo (in app), sessioni di gioco con .ics, note sulle patch
+- [x] Minimo registrato del prezzo e stima del ritmo delle patch
 - [ ] Idea: notifica push di saldo di gruppo e promemoria delle sessioni (servirebbe far parlare l'archivio della squadra con ntfy)
 
