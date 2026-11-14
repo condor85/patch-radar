@@ -16,10 +16,8 @@ Idee per Game Patch Radar, in ordine di priorità.
 - [x] «Annulla» dopo aggiunta/rimozione di un gioco
 - [x] Stato del ponte Cloudflare (token in scadenza)
 - [x] Salvataggio/sincronizzazione di «letto» e «salvati» tra dispositivi, con codice personale (⚙ → Sincronizza tra dispositivi)
-- [ ] (rimandato) Altre fonti oltre a Steam
 - [x] Squadra: «Ci gioco» / «Mi interessa», codice del gruppo, schermata Squadra
 - [x] Squadra: messaggio pronto per WhatsApp, saldi di gruppo (in app), sessioni di gioco con .ics, note sulle patch
 - [x] Minimo registrato del prezzo e stima del ritmo delle patch
 - [x] Avvisi per argomento (co-op, crash, controller, mod, prestazioni, lingua italiana) anche per le patch piccole
-- [ ] Idea: notifica push di saldo di gruppo e promemoria delle sessioni (servirebbe far parlare l'archivio della squadra con ntfy)
 
