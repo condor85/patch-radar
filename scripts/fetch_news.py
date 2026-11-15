@@ -35,8 +35,21 @@ OUTBOX = os.environ.get("OUTBOX_FILE", "outbox.json")
 PRICES_OUT = "data/prices.json"          # storico prezzi: file a parte, cambia solo quando un prezzo varia
 PRICE_HISTORY_MAX = 60                   # variazioni di prezzo conservate per gioco
 PLAYERS_MAX_AGE = 6 * 3600              # il numero si aggiorna se cambia di almeno il 10% o dopo questo tempo
-SIGN_VERSION = "patch-radar-v1"          # deve coincidere con sw.js
-KEEP = ("gid", "title", "url", "contents", "date", "feedlabel", "feedname", "author", "tags")
+
+
+def _load_shared():
+    """Costanti condivise con l'app e il service worker: la fonte unica è shared.js (l'oggetto SHARED è JSON valido)."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "shared.js")
+    with open(path, encoding="utf-8") as f:
+        m = re.search(r"const SHARED = (\{.*?\n\});", f.read(), re.S)
+    if not m:
+        raise SystemExit("shared.js: non trovo l'oggetto SHARED")
+    return json.loads(m.group(1))
+
+
+SHARED = _load_shared()
+SIGN_VERSION = SHARED["signVersion"]
+KEEP =("gid", "title", "url", "contents", "date", "feedlabel", "feedname", "author", "tags")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GEMINI_BASE = os.environ.get("GEMINI_BASE", "https://generativelanguage.googleapis.com/v1beta/models")
 GEMINI_FALLBACK = ["gemini-flash-latest", "gemini-2.5-flash"]
@@ -474,16 +487,20 @@ def is_major(item):
 
 
 # Avvisi per parola chiave: gruppi fissi (l'app si iscrive a un argomento per gioco e per gruppo, quindi l'elenco deve essere
-# lo stesso lato app: vedi KW_GROUPS in index.html). id -> (nome mostrato, espressione cercata nel titolo e nel testo)
-KEYWORD_GROUPS = {
-    "coop": ("Co-op e multiplayer", re.compile(r"\bco-?op\b|\bmulti-?player\b|\bdedicated servers?\b|\bsplit-?screen\b|\bcross-?play\b|\bcross-?platform\b", re.I)),
-    "crash": ("Crash e blocchi", re.compile(r"\bcrash(?:es|ed|ing)?\b|\bfreez(?:e|es|ing)\b|\bsoft-?lock\w*|\bcorrupt\w*|\bstuck\b", re.I)),
-    "controller": ("Controller e Steam Deck", re.compile(r"\bcontrollers?\b|\bgamepads?\b|\bsteam deck\b|\bdualsense\b|\bdualshock\b|\brebind\w*", re.I)),
-    "mod": ("Mod e Workshop", re.compile(r"\bmods?\b|\bmodding\b|\bworkshop\b", re.I)),
-    "perf": ("Prestazioni", re.compile(r"\bperformance\b|\boptimi[sz]\w*|\bfps\b|\bframe ?rate\b|\bstutter\w*|\bmemory leak", re.I)),
-    "lang": ("Lingua italiana", re.compile(r"\bitalian\b|\bitaliano\b|\blocali[sz]ation\b|\btranslations?\b", re.I)),
-    "save": ("Salvataggi, wipe e incompatibilità", re.compile(r"\bsave ?(?:games?|files?|data)\b|\bsaves\b|\b(?:character |progress |server )?wipes?\b|\bincompatib\w*|\bbackwards? compat\w*|\bno longer compatible\b|\bbreaking changes?\b", re.I)),
+# lo stesso lato app). Id, nome mostrato e ordine arrivano da shared.js (KW_GROUPS nell'app); qui restano solo le espressioni
+# cercate nel titolo e nel testo, che servono soltanto all'Action.
+_KEYWORD_PATTERNS = {
+    "coop": re.compile(r"\bco-?op\b|\bmulti-?player\b|\bdedicated servers?\b|\bsplit-?screen\b|\bcross-?play\b|\bcross-?platform\b", re.I),
+    "crash": re.compile(r"\bcrash(?:es|ed|ing)?\b|\bfreez(?:e|es|ing)\b|\bsoft-?lock\w*|\bcorrupt\w*|\bstuck\b", re.I),
+    "controller": re.compile(r"\bcontrollers?\b|\bgamepads?\b|\bsteam deck\b|\bdualsense\b|\bdualshock\b|\brebind\w*", re.I),
+    "mod": re.compile(r"\bmods?\b|\bmodding\b|\bworkshop\b", re.I),
+    "perf": re.compile(r"\bperformance\b|\boptimi[sz]\w*|\bfps\b|\bframe ?rate\b|\bstutter\w*|\bmemory leak", re.I),
+    "lang": re.compile(r"\bitalian\b|\bitaliano\b|\blocali[sz]ation\b|\btranslations?\b", re.I),
+    "save": re.compile(r"\bsave ?(?:games?|files?|data)\b|\bsaves\b|\b(?:character |progress |server )?wipes?\b|\bincompatib\w*|\bbackwards? compat\w*|\bno longer compatible\b|\bbreaking changes?\b", re.I),
 }
+if [gid for gid, _ in SHARED["keywordGroups"]] != list(_KEYWORD_PATTERNS):
+    raise SystemExit("I gruppi di parole chiave di shared.js e le espressioni di fetch_news.py non coincidono (stessi id, stesso ordine)")
+KEYWORD_GROUPS = {gid: (name, _KEYWORD_PATTERNS[gid]) for gid, name in SHARED["keywordGroups"]}   # id -> (nome mostrato, espressione)
 
 
 def keywords_of(item):

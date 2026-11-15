@@ -1,9 +1,7 @@
-// Test di sharedGame() in index.html e della voce share_target del manifest (si lancia dalla radice: node tests/share.test.js)
+// Test di sharedGame() in js/share.js e della voce share_target del manifest (si lancia dalla radice: node tests/share.test.js)
 const fs = require("fs"), assert = require("assert"), path = require("path");
-const src = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
-const m = src.match(/\/\* PATCH-SHARE:start \*\/([\s\S]*?)\/\* PATCH-SHARE:end \*\//);
-assert(m, "blocco PATCH-SHARE non trovato in index.html");
-const sharedGame = new Function(m[1] + "; return sharedGame;")();
+const src = fs.readFileSync(path.join(__dirname, "..", "js", "share.js"), "utf8");
+const sharedGame = new Function(src + "; return sharedGame;")();
 
 // link della pagina Steam nel campo url (condivisione dal browser)
 assert.deepStrictEqual(sharedGame("?title=Enshrouded%20on%20Steam&url=https%3A%2F%2Fstore.steampowered.com%2Fapp%2F1203620%2FEnshrouded%2F"), {appid: 1203620, name: "Enshrouded"});
