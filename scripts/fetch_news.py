@@ -363,30 +363,53 @@ class RateLimited(Exception):
     pass
 
 
-def gemini_call(system, user, max_tokens=2000, timeout=120):
-    """Una richiesta a Gemini (piano gratuito). Prova i modelli in ordine; alza RateLimited se la quota è finita."""
-    payload = {"systemInstruction": {"parts": [{"text": system}]},
-               "contents": [{"role": "user", "parts": [{"text": user}]}],
-               "generationConfig": {"temperature": 0.2, "maxOutputTokens": max_tokens}}
-    errors = []
-    for model in gemini_models():
+def gemini_call(system, user, max_tokens=2000, timeout=120, schema=None, schema_note=""):
+    """Una richiesta a Gemini (piano gratuito). Prova i modelli in ordine; alza RateLimited se la quota è finita.
+
+    Con `schema` (formato JSON di Gemini) la risposta è vincolata a quella forma: il testo di servizio del modello («Check word count»,
+    «Point 1:»…) non può più finire nel risultato, perché non c'è un posto dove metterlo. `schema_note` si aggiunge alle istruzioni solo
+    in quel caso. Se un modello rifiuta la modalità JSON (HTTP 400) si ripete la richiesta senza schema e il chiamante ripiega sul testo libero."""
+    def post(model, with_schema):
+        config = {"temperature": 0.2, "maxOutputTokens": max_tokens}
+        if with_schema:
+            config.update({"responseMimeType": "application/json", "responseSchema": schema})
+        instructions = system + ("\n\n" + schema_note if with_schema and schema_note else "")
+        payload = {"systemInstruction": {"parts": [{"text": instructions}]},
+                   "contents": [{"role": "user", "parts": [{"text": user}]}],
+                   "generationConfig": config}
         req = urllib.request.Request(f"{GEMINI_BASE}/{model}:generateContent", data=json.dumps(payload).encode("utf-8"), headers={
             "Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY, "User-Agent": "patch-radar/1.0"})
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                data = json.loads(read_limited(r))
-            text = "".join(p.get("text", "") for p in data["candidates"][0]["content"]["parts"]).strip()
-            if text:
-                return text
-            errors.append(f"{model}: risposta vuota")
-        except urllib.error.HTTPError as e:
-            msg = e.read()[:400].decode("utf-8", "replace")
-            if e.code == 429:
-                raise RateLimited(msg)
-            errors.append(f"{model} HTTP {e.code}: {msg[:150]}")
-        except Exception as e:  # noqa
-            errors.append(f"{model}: {e}")
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.loads(read_limited(r))
+        return "".join(p.get("text", "") for p in data["candidates"][0]["content"]["parts"]).strip()
+
+    errors = []
+    for model in gemini_models():
+        for with_schema in ([True, False] if schema else [False]):
+            try:
+                text = post(model, with_schema)
+                if text:
+                    return text
+                errors.append(f"{model}: risposta vuota")
+            except urllib.error.HTTPError as e:
+                msg = e.read()[:400].decode("utf-8", "replace")
+                if e.code == 429:
+                    raise RateLimited(msg)
+                if e.code == 400 and with_schema:
+                    errors.append(f"{model}: modalità JSON non accettata, riprovo senza")
+                    continue
+                errors.append(f"{model} HTTP {e.code}: {msg[:150]}")
+            except Exception as e:  # noqa
+                errors.append(f"{model}: {e}")
+            break   # errore diverso dal rifiuto dello schema: passa al modello successivo
     raise RuntimeError(" || ".join(errors))
+
+
+SUMMARY_SCHEMA = {"type": "OBJECT", "properties": {"points": {"type": "ARRAY", "minItems": 1, "maxItems": 5, "items": {"type": "STRING"}}}, "required": ["points"]}
+SUMMARY_NOTE = "Rispondi in JSON: ogni punto è un elemento dell'array «points», senza il simbolo «•» davanti."
+TRANSLATION_SCHEMA = {"type": "OBJECT", "properties": {"title": {"type": "STRING"}, "text": {"type": "STRING"}}, "required": ["title", "text"]}
+TRANSLATION_NOTE = ("Rispondi in JSON: «title» è il titolo tradotto (senza «TITOLO:»), «text» è la traduzione completa, "
+                    "con le righe «# » e «• » come nell'originale, una per riga.")
 
 
 LEAK_RE = re.compile(
@@ -409,13 +432,35 @@ def clean_ai_summary(text):
     return "\n".join(out)[:900]
 
 
+def parse_points(text):
+    """Punti elenco dalla risposta JSON {"points": [...]}. Se non è JSON valido (modello senza modalità JSON) si ripiega
+    sulla pulizia del testo libero. Ritorna "" se non resta nessun punto sensato."""
+    try:
+        points = json.loads(text)["points"]
+        if not isinstance(points, list):
+            raise TypeError("points non è un elenco")
+    except (ValueError, KeyError, TypeError):
+        return clean_ai_summary(text)
+    out = []
+    for raw in points[:20]:   # il tetto di 5 vale per i punti buoni: si scartano prima quelli vuoti o di servizio
+        if not isinstance(raw, str):
+            continue
+        line = WORDS_TAIL_RE.sub("", raw.strip()).lstrip("-*• ").strip()
+        if len(line) < 12 or line.endswith(":"):
+            continue
+        out.append("• " + " ".join(line.split()))
+        if len(out) == 5:
+            break
+    return "\n".join(out)[:900]
+
+
 def summarize(name, item):
     """Riassunto in italiano con Gemini. Ritorna "" se non disponibile."""
     body = clean(item.get("contents"))[:30000]
     if not GEMINI_KEY or len(body) < 300:
         return ""
-    text = gemini_call(SYSTEM_PROMPT, f"Gioco: {name}\nTitolo: {item.get('title')}\n\n{body}")
-    return clean_ai_summary(text)
+    text = gemini_call(SYSTEM_PROMPT, f"Gioco: {name}\nTitolo: {item.get('title')}\n\n{body}", schema=SUMMARY_SCHEMA, schema_note=SUMMARY_NOTE)
+    return parse_points(text)
 
 
 TRANSLATE_PROMPT = """Sei un traduttore professionista di videogiochi. Traduci in italiano le note di aggiornamento che ricevi.
@@ -432,11 +477,27 @@ def translate_item(name, item):
     text = "\n".join(structured_lines(item.get("contents")))
     if not GEMINI_KEY or len(text) < 80 or len(text) > 30000:
         return None
-    out = gemini_call(TRANSLATE_PROMPT, f"Gioco: {name}\nTITOLO: {item.get('title')}\n\n{text}", max_tokens=16000, timeout=240)
-    title, _, body = out.partition("\n")
-    if not title.upper().startswith("TITOLO:") or len(body.strip()) < len(text) * 0.3:
+    out = gemini_call(TRANSLATE_PROMPT, f"Gioco: {name}\nTITOLO: {item.get('title')}\n\n{text}", max_tokens=16000, timeout=240,
+                      schema=TRANSLATION_SCHEMA, schema_note=TRANSLATION_NOTE)
+    title, body = parse_translation(out)
+    if len(body) < len(text) * 0.3:
         raise RuntimeError("traduzione incompleta")
-    return {"title": title.split(":", 1)[1].strip(), "text": body.strip(), "src": "gemini"}
+    return {"title": title, "text": body, "src": "gemini"}
+
+
+def parse_translation(out):
+    """(titolo, testo) dalla risposta JSON {"title", "text"}; se non è JSON valido, dal formato libero «TITOLO: …» + testo."""
+    try:
+        data = json.loads(out)
+        title, body = data["title"], data["text"]
+        if not isinstance(title, str) or not isinstance(body, str):
+            raise TypeError("title e text devono essere testo")
+    except (ValueError, KeyError, TypeError):
+        first, _, body = out.partition("\n")
+        if not first.upper().startswith("TITOLO:"):
+            raise RuntimeError("traduzione incompleta")
+        title = first.split(":", 1)[1]
+    return title.strip(), body.strip()
 
 
 def structured_lines(text):

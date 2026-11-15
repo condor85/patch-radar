@@ -752,5 +752,152 @@ class RobustnessTests(unittest.TestCase):
             fn.read_limited(Resp(11), limit=10)
 
 
+class FakeHTTPResponse:
+    def __init__(self, body):
+        self.body = body if isinstance(body, bytes) else json.dumps(body).encode("utf-8")
+
+    def read(self, n=-1):
+        return self.body if n < 0 else self.body[:n]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def gemini_reply(text):
+    return FakeHTTPResponse({"candidates": [{"content": {"parts": [{"text": text}]}}]})
+
+
+def http_error(code, msg="errore"):
+    return fn.urllib.error.HTTPError("https://x", code, msg, {}, io.BytesIO(msg.encode("utf-8")))
+
+
+class GeminiStructuredOutputTests(unittest.TestCase):
+    """Con lo schema JSON il testo di servizio del modello non ha dove finire; senza JSON si ripiega sul testo libero."""
+
+    def call(self, replies, **kw):
+        sent = []
+
+        def fake_urlopen(req, timeout=0):
+            sent.append(json.loads(req.data))
+            r = replies.pop(0)
+            if isinstance(r, Exception):
+                raise r
+            return r
+
+        with mock.patch.object(fn, "gemini_models", return_value=["m1", "m2"]), mock.patch.object(fn, "GEMINI_KEY", "k"), \
+                mock.patch.object(fn.urllib.request, "urlopen", fake_urlopen):
+            try:
+                return fn.gemini_call("sistema", "utente", **kw), sent
+            except Exception as e:  # noqa
+                return e, sent
+
+    def test_schema_is_sent_with_the_note_in_the_instructions(self):
+        out, sent = self.call([gemini_reply('{"points": ["x"]}')], schema=fn.SUMMARY_SCHEMA, schema_note="NOTA")
+        self.assertEqual(out, '{"points": ["x"]}')
+        cfg = sent[0]["generationConfig"]
+        self.assertEqual(cfg["responseMimeType"], "application/json")
+        self.assertEqual(cfg["responseSchema"], fn.SUMMARY_SCHEMA)
+        self.assertTrue(sent[0]["systemInstruction"]["parts"][0]["text"].endswith("NOTA"))
+
+    def test_without_schema_nothing_changes(self):
+        out, sent = self.call([gemini_reply("testo")])
+        self.assertEqual(out, "testo")
+        self.assertNotIn("responseSchema", sent[0]["generationConfig"])
+        self.assertEqual(sent[0]["systemInstruction"]["parts"][0]["text"], "sistema")
+
+    def test_a_model_that_refuses_json_mode_is_retried_without_schema_and_without_the_note(self):
+        out, sent = self.call([http_error(400), gemini_reply("• testo libero")], schema=fn.SUMMARY_SCHEMA, schema_note="NOTA")
+        self.assertEqual(out, "• testo libero")
+        self.assertEqual(len(sent), 2)
+        self.assertNotIn("responseSchema", sent[1]["generationConfig"])
+        self.assertEqual(sent[1]["systemInstruction"]["parts"][0]["text"], "sistema")
+
+    def test_another_error_moves_on_to_the_next_model_without_retrying_the_same_one(self):
+        out, sent = self.call([http_error(500), gemini_reply('{"points": ["y"]}')], schema=fn.SUMMARY_SCHEMA)
+        self.assertEqual(out, '{"points": ["y"]}')
+        self.assertEqual(len(sent), 2)
+        self.assertIn("responseSchema", sent[1]["generationConfig"])   # secondo modello, di nuovo con lo schema
+
+    def test_rate_limit_stops_everything(self):
+        out, sent = self.call([http_error(429, "quota"), gemini_reply("mai")], schema=fn.SUMMARY_SCHEMA)
+        self.assertIsInstance(out, fn.RateLimited)
+        self.assertEqual(len(sent), 1)
+
+    def test_all_models_failing_raises_with_every_error(self):
+        out, _ = self.call([http_error(500, "uno"), http_error(503, "due")], schema=fn.SUMMARY_SCHEMA)
+        self.assertIsInstance(out, RuntimeError)
+        self.assertIn("m1 HTTP 500", str(out))
+        self.assertIn("m2 HTTP 503", str(out))
+
+    def test_empty_reply_moves_on(self):
+        out, sent = self.call([gemini_reply(""), gemini_reply("ok")])
+        self.assertEqual(out, "ok")
+        self.assertEqual(len(sent), 2)
+
+    def test_parse_points_from_json_drops_bullets_counts_and_short_lines(self):
+        raw = json.dumps({"points": ["• Aggiunta la nuova modalità cooperativa fino a quattro giocatori. (11 words)", "Point 1:", "corto", 42, None,
+                                      "- Bilanciate le armi a lungo raggio.", "Terzo punto valido sul gioco.", "Quarto punto valido sul gioco.",
+                                      "Quinto punto valido sul gioco.", "Sesto punto che va scartato dal limite."]})
+        self.assertEqual(fn.parse_points(raw),
+                         "• Aggiunta la nuova modalità cooperativa fino a quattro giocatori.\n• Bilanciate le armi a lungo raggio.\n"
+                         "• Terzo punto valido sul gioco.\n• Quarto punto valido sul gioco.\n• Quinto punto valido sul gioco.")
+
+    def test_parse_points_keeps_legit_words_that_the_old_filter_dropped(self):
+        raw = json.dumps({"points": ["Corretto un errore per cui il gioco poteva bloccarsi: check del salvataggio ora affidabile."]})
+        self.assertIn("check del salvataggio", fn.parse_points(raw))
+
+    def test_parse_points_falls_back_to_free_text_cleaning(self):
+        raw = "• Check word count and constraints:**\n• Le ricette fissate ora rimangono correttamente bloccate nell'interfaccia."
+        self.assertEqual(fn.parse_points(raw), "• Le ricette fissate ora rimangono correttamente bloccate nell'interfaccia.")
+
+    def test_parse_points_with_unexpected_json_shapes(self):
+        self.assertEqual(fn.parse_points('{"points": []}'), "")
+        for raw in ('{"altro": 1}', '{"points": "testo"}', "[1, 2]", "123", "null"):
+            self.assertIsInstance(fn.parse_points(raw), str, raw)   # nessuna eccezione: si ripiega sul testo libero
+
+    def test_parse_translation_from_json(self):
+        self.assertEqual(fn.parse_translation('{"title": " Titolo ", "text": "# Sezione\\n• voce"}'), ("Titolo", "# Sezione\n• voce"))
+
+    def test_parse_translation_falls_back_to_the_old_format(self):
+        self.assertEqual(fn.parse_translation("TITOLO: Titolo\n# Sezione\n• voce"), ("Titolo", "# Sezione\n• voce"))
+
+    def test_parse_translation_rejects_garbage(self):
+        for raw in ("senza titolo\ntesto", '{"title": 1, "text": "x"}', '{"title": "t"}'):
+            with self.assertRaises(RuntimeError):
+                fn.parse_translation(raw)
+
+    def test_translate_item_uses_the_schema_and_checks_completeness(self):
+        item = {"title": "Patch", "contents": "[h2]Novità[/h2][list][*]" + "Aggiunta una cosa molto interessante. " * 5 + "[/list]"}
+        body = "# Novità\n• " + "Aggiunta una cosa molto interessante. " * 5
+        seen = {}
+
+        def fake(system, user, **kw):
+            seen.update(kw)
+            return json.dumps({"title": "Patch IT", "text": body})
+
+        with mock.patch.object(fn, "GEMINI_KEY", "k"), mock.patch.object(fn, "gemini_call", fake):
+            out = fn.translate_item("G", item)
+        self.assertEqual(out, {"title": "Patch IT", "text": body.strip(), "src": "gemini"})
+        self.assertIs(seen["schema"], fn.TRANSLATION_SCHEMA)
+        with mock.patch.object(fn, "GEMINI_KEY", "k"), mock.patch.object(fn, "gemini_call", lambda *a, **k: json.dumps({"title": "t", "text": "corto"})):
+            with self.assertRaises(RuntimeError):
+                fn.translate_item("G", item)
+
+    def test_summarize_uses_the_schema(self):
+        item = {"title": "Patch", "contents": "Testo della patch. " * 40}
+        seen = {}
+
+        def fake(system, user, **kw):
+            seen.update(kw)
+            return json.dumps({"points": ["Aggiunta la nuova modalità cooperativa fino a quattro giocatori."]})
+
+        with mock.patch.object(fn, "GEMINI_KEY", "k"), mock.patch.object(fn, "gemini_call", fake):
+            self.assertEqual(fn.summarize("G", item), "• Aggiunta la nuova modalità cooperativa fino a quattro giocatori.")
+        self.assertIs(seen["schema"], fn.SUMMARY_SCHEMA)
+
+
 if __name__ == "__main__":
     unittest.main()
