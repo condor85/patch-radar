@@ -133,7 +133,7 @@ $("vBigger").addEventListener("click", () => setFont(fontIdx + 1));
  });
 })();
 function closeTopOverlay() {
- for (const id of ["viewer", "invite", "welcome", "recap", "team", "manager"]) {
+ for (const id of ["changelog", "viewer", "invite", "welcome", "recap", "team", "manager"]) {
   if (!$(id).classList.contains("open")) continue;
   if (id === "viewer") closeViewer(); else if (id === "welcome") finishWelcome(); else closeOv(id);
   return;

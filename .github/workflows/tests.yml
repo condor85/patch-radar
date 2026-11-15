@@ -41,5 +41,7 @@ jobs:
         run: node tests/share.test.js
       - name: Elenco giochi
         run: node tests/core.test.js
+      - name: Novità dell'app
+        run: node tests/changelog.test.js
       - name: Struttura dell'app
         run: node tests/structure.test.js

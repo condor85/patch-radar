@@ -25,6 +25,8 @@ Idee per Game Patch Radar, in ordine di priorità.
 - [x] Notifica «patch stabile» dopo 48 ore senza hotfix
 - [x] Condividi da Steam verso l'app (share_target)
 - [x] Gruppo di parole «Salvataggi, wipe e incompatibilità»
+- [x] Numero di versione in alto accanto al nome e finestra «Novità dell'app» con il registro delle modifiche (`js/changelog.js`; dal 15 nov 2026 ogni modifica visibile aggiunge una voce e alza la versione)
+- [x] Rafforzamento di sicurezza e robustezza (15 nov 2026): dati illeggibili che non vengono più azzerati, scritture atomiche, verifica delle firme anche offline, azioni GitHub fissate a un commit, Gemini con risposte strutturate, versione dell'app generata a ogni pubblicazione (`SECURITY.md`)
 - [x] `index.html` spezzato in file `js/*.js` (caricati in ordine da `index.html`; il test `tests/structure.test.js` ne controlla l'elenco) e costanti comuni in `shared.js` (`KW_GROUPS`, `SIGN_VERSION`, lette anche da Python e dal service worker)
 
 ## Idee da fare (proposte il 15 nov 2026)
@@ -35,3 +37,19 @@ Idee per Game Patch Radar, in ordine di priorità.
 - [ ] (da valutare) Parole chiave personalizzate per gioco: richiede di salvare le parole sul ponte, perché i nomi degli argomenti ntfy non le possono contenere
 - [ ] (da valutare) «Patch stabile»: aggiungere il confronto delle recensioni recenti Steam prima e dopo la patch; diario del gioco: stato Steam Deck
 - [ ] Verificare su un telefono Android la condivisione da Steam (potrebbe servire reinstallare l'app) e al primo controllo che i dati della scheda Steam (lingue, generi, DLC) vengano letti davvero
+
+## Consigli tecnici (15 nov 2026)
+Per rendere il progetto più solido e più facile da far crescere. In ordine di valore; sono tutte cose che si possono provare da sole, senza toccare il formato dei dati né le chiavi di «letto» e «salvati».
+- [ ] **Prova automatica nel browser (Playwright, in CI):** apre l'app con dati finti e controlla che non ci siano errori in console, che si apra un gioco, il lettore, le impostazioni e la finestra delle novità. È la rete di sicurezza che oggi manca sul frontend: con quella, ogni modifica all'interfaccia si verifica prima della pubblicazione.
+- [ ] **Riepilogo di ogni aggiornamento orario** (`$GITHUB_STEP_SUMMARY`): giochi controllati, annunci nuovi, riassunti e traduzioni riusciti/falliti, modello Gemini usato, quota esaurita sì/no, durata. Oggi per capire perché un riassunto manca bisogna leggere i log.
+- [ ] **Avviso di dati vecchi:** se `updated` in `news.json` è più vecchio di qualche ora (Action ferma, Steam o Gemini in errore), l'app lo dice in modo visibile; in più una notifica all'amministratore quando l'Action fallisce due volte di fila.
+- [ ] **Esporta/importa i tuoi dati** (giochi, letto, salvati, preferenze) in un file, per chi non usa il codice di sincronizzazione o cambia telefono: stesso formato già usato da `sync.js`.
+- [ ] **Controlli di accessibilità** (contrasto, tasti raggiungibili da tastiera, `aria-live` sui messaggi di stato) con Lighthouse o axe nella prova del browser.
+- [ ] **Registro delle modifiche del ponte:** ogni modifica ai giochi fatta dal telefono lascia una riga leggibile (chi, cosa, quando) nel messaggio del commit, per capire a posteriori cosa è cambiato.
+- [ ] (da valutare) Ponte Cloudflare: usare il limitatore di richieste nativo di Cloudflare al posto del contatore nel Durable Object, e togliere `'unsafe-inline'` dagli script nella CSP (serve spostare gli script in linea di `index.html` in file o usare un hash).
+- [ ] (da valutare) Rimuovere il vecchio accesso con token GitHub nel browser (oggi non usato quando il ponte è configurato).
+
+### Come rilasciare una modifica
+1. Aggiungi in cima a `CHANGELOG` in `js/changelog.js` una voce con la nuova versione, la data e le modifiche scritte per chi usa l'app.
+2. Porta `APP_VERSION` in `index.html` e tutti i `?v=` degli script alla stessa versione (numerazione `1.<novità>.<correzioni>`). `tests/changelog.test.js` e `tests/structure.test.js` falliscono se qualcosa non coincide.
+3. Alla pubblicazione la versione viene completata da sola con un'impronta dei file (`scripts/stamp_version.py`).

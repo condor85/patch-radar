@@ -17,6 +17,7 @@ In entrambi i casi il sito si aggiorna da solo in circa un minuto.
 
 - **Home** all'apertura: l'ultima patch di ogni gioco, con titolo, etichette e riassunto; da lì si legge la nota o si passa a tutte le patch del gioco.
 - **Benvenuto** alla prima apertura (installa, notifiche, giochi) e **Invita un amico** con link, QR e WhatsApp (⚙ → Condividi l'app).
+- **Versione e novità dell'app:** il numero di versione sta in alto accanto al nome; toccandolo si apre il registro delle modifiche (`js/changelog.js`).
 - **Riepilogo** delle novità dall'ultima visita, con scorrimento tra le patch a schermo intero (swipe o frecce).
 - **Etichette automatiche** (Nuovi contenuti, Bilanciamento, Prestazioni, Correzioni) e filtri; **ricerca** nei testi di tutto lo storico (fino a 60 pubblicazioni per gioco); **Salvati** per rileggere dopo.
 - **Prezzo e saldi** (aggiornati dall'Action) e **giocatori online** (letti dal browser).
@@ -76,4 +77,6 @@ node tests/sw.test.js                      # service worker (cache, notifiche, f
 node tests/worker.test.mjs                 # ponte di amministrazione
 node tests/cadence.test.js                 # stima del ritmo delle patch
 node tests/sync-client.test.mjs            # sincronizzazione «letto» e «salvati» (app + ponte)
+node tests/core.test.js                    # elenco giochi (numeri app validi)
+node tests/changelog.test.js               # registro delle novità e versione mostrata in alto
 ```

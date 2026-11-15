@@ -125,6 +125,7 @@ details.admin summary{cursor:pointer;padding:11px 0;font-weight:700;font-size:14
 .brand{flex:1;min-width:0;display:flex;align-items:baseline;gap:7px;white-space:nowrap;overflow:hidden}
 .brand b{font-size:17px;letter-spacing:.2px}
 .brand .by{margin:0;font-size:10.5px}
+.ver{flex:none;border:1px solid var(--green-line);background:var(--panel);color:var(--accent);border-radius:999px;padding:1px 8px;font-size:11px;font-weight:750;letter-spacing:.2px;line-height:1.5}
 .tools{display:flex;gap:6px}
 button{font:inherit;cursor:pointer}
 .ibtn{width:36px;height:36px;border:1px solid var(--btn-line);background:var(--btn-bg);color:var(--text);border-radius:11px;font-size:16px;display:grid;place-items:center;padding:0}
@@ -230,7 +231,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
 <body>
 <header class="top" id="top">
  <div class="bar">
-  <div class="brand"><span>🎮</span><b><span class="full">Game </span>Patch Radar</b><span class="by">By Pugno</span></div>
+  <div class="brand"><span>🎮</span><b><span class="full">Game </span>Patch Radar</b><button class="ver" id="verBtn" type="button" aria-label="Versione dell'app e novità" title="Novità dell'app"></button><span class="by">By Pugno</span></div>
   <div class="tools">
    <button class="ibtn" id="installBtn" type="button" hidden aria-label="Installa l'app" title="Installa l'app">📲</button>
    <button class="ibtn" id="refreshBtn" type="button" aria-label="Aggiorna" title="Aggiorna">↻</button>
@@ -281,6 +282,10 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
  <div class="v-bar"><button class="abtn" id="rClose" type="button">✕ Chiudi</button></div>
  <div class="v-body"><div class="v-inner" id="recapBody"></div></div>
 </div>
+<div class="viewer" id="changelog" role="dialog" aria-modal="true" aria-label="Novità dell'app">
+ <div class="v-bar"><button class="abtn" id="clClose" type="button">✕ Chiudi</button></div>
+ <div class="v-body"><div class="v-inner" id="changelogBody"></div></div>
+</div>
 <div class="viewer" id="welcome" role="dialog" aria-modal="true" aria-label="Benvenuto">
  <div class="v-body"><div class="v-inner" id="welcomeBody"></div></div>
 </div>
@@ -307,24 +312,25 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
  <div class="v-body" id="vBody"><div class="v-inner" id="vInner"></div></div>
 </div>
 
-<script>const APP_VERSION = "2026-11-15.4";</script>
-<script src="shared.js?v=2026-11-15.4"></script>
-<script src="js/core.js?v=2026-11-15.4"></script>
-<script src="js/seen.js?v=2026-11-15.4"></script>
-<script src="js/utils.js?v=2026-11-15.4"></script>
-<script src="js/network.js?v=2026-11-15.4"></script>
-<script src="js/viewer.js?v=2026-11-15.4"></script>
-<script src="js/admin.js?v=2026-11-15.4"></script>
-<script src="js/share.js?v=2026-11-15.4"></script>
-<script src="js/admin-games.js?v=2026-11-15.4"></script>
-<script src="js/cards.js?v=2026-11-15.4"></script>
-<script src="js/cadence.js?v=2026-11-15.4"></script>
-<script src="js/render.js?v=2026-11-15.4"></script>
-<script src="js/notifications.js?v=2026-11-15.4"></script>
-<script src="js/dialogs.js?v=2026-11-15.4"></script>
-<script src="js/team.js?v=2026-11-15.4"></script>
-<script src="js/shell-ui.js?v=2026-11-15.4"></script>
-<script src="js/sync.js?v=2026-11-15.4"></script>
-<script src="js/boot.js?v=2026-11-15.4"></script>
+<script>const APP_VERSION = "1.1.0";</script>
+<script src="shared.js?v=1.1.0"></script>
+<script src="js/core.js?v=1.1.0"></script>
+<script src="js/seen.js?v=1.1.0"></script>
+<script src="js/utils.js?v=1.1.0"></script>
+<script src="js/network.js?v=1.1.0"></script>
+<script src="js/viewer.js?v=1.1.0"></script>
+<script src="js/admin.js?v=1.1.0"></script>
+<script src="js/share.js?v=1.1.0"></script>
+<script src="js/admin-games.js?v=1.1.0"></script>
+<script src="js/cards.js?v=1.1.0"></script>
+<script src="js/cadence.js?v=1.1.0"></script>
+<script src="js/render.js?v=1.1.0"></script>
+<script src="js/notifications.js?v=1.1.0"></script>
+<script src="js/dialogs.js?v=1.1.0"></script>
+<script src="js/changelog.js?v=1.1.0"></script>
+<script src="js/team.js?v=1.1.0"></script>
+<script src="js/shell-ui.js?v=1.1.0"></script>
+<script src="js/sync.js?v=1.1.0"></script>
+<script src="js/boot.js?v=1.1.0"></script>
 </body>
 </html>

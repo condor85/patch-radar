@@ -2,7 +2,7 @@ importScripts("shared.js");   // costanti comuni con l'app e l'Action (SIGN_VERS
 const CACHE = "patch-radar-v8";
 const PREFS = "gpr-prefs";   // preferenze inviate dalla pagina (ore silenziose)
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "qr.js", "shared.js",
-  "js/core.js", "js/seen.js", "js/utils.js", "js/network.js", "js/viewer.js", "js/admin.js", "js/share.js", "js/admin-games.js", "js/cards.js", "js/cadence.js", "js/render.js", "js/notifications.js", "js/dialogs.js", "js/team.js", "js/shell-ui.js", "js/sync.js", "js/boot.js"];
+  "js/core.js", "js/seen.js", "js/utils.js", "js/network.js", "js/viewer.js", "js/admin.js", "js/share.js", "js/admin-games.js", "js/cards.js", "js/cadence.js", "js/render.js", "js/notifications.js", "js/dialogs.js", "js/changelog.js", "js/team.js", "js/shell-ui.js", "js/sync.js", "js/boot.js"];
 // Siti esterni a cui una notifica può rimandare (oltre all'app stessa). Il payload arriva da un argomento ntfy pubblico:
 // chiunque ne conosca il nome può scriverci, quindi non ci si fida mai di un link arbitrario.
 const TRUSTED_ORIGINS = new Set(["https://store.steampowered.com", "https://steamcommunity.com"]);
