@@ -73,7 +73,7 @@ jobs:
         if: steps.fetch.outputs.changed == 'true' || github.event_name != 'schedule'
         run: |
           mkdir _site
-          cp -r index.html manifest.webmanifest sw.js qr.js config.json icons data _site/
+          cp -r index.html manifest.webmanifest sw.js qr.js config.json icons js data _site/
 
       # Se in config.json c'è l'indirizzo del ponte di amministrazione ("adminApi"), lo aggiunge alla Content-Security-Policy
       # del sito pubblicato (solo un'origine https valida). Se non va a buon fine il sito esce comunque, col ponte non raggiungibile.

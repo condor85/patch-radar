@@ -57,7 +57,7 @@ async function doFetch(w, url, mode) {
       w.handlers.fetch({ request: request(`${SCOPE}data/news.json?t=${q}`), respondWith: p => { out = p; }, waitUntil: p => waits.push(p) });
       await out; await Promise.all(waits);
     }
-    const app = w.stores.get("patch-radar-v7");
+    const app = w.stores.get("patch-radar-v8");
     assert.deepEqual([...app.keys()], [`${SCOPE}data/news.json`]);
   });
 
@@ -80,7 +80,7 @@ async function doFetch(w, url, mode) {
 
   await t("offline: una pagina non in cache ripiega su index.html", async () => {
     const w = makeWorker();
-    const c = await w.ctx.caches.open("patch-radar-v7"); await c.put("index.html", basic("<html>shell</html>"));
+    const c = await w.ctx.caches.open("patch-radar-v8"); await c.put("index.html", basic("<html>shell</html>"));
     const res = await doFetch(w, `${SCOPE}`, "navigate");
     assert.equal(await res.text(), "<html>shell</html>");
   });
@@ -91,7 +91,7 @@ async function doFetch(w, url, mode) {
     let out; const waits = [];
     w.handlers.fetch({ request: request(`${SCOPE}x.json`), respondWith: p => { out = p; }, waitUntil: p => waits.push(p) });
     await out; await Promise.all(waits);
-    assert.equal(w.stores.get("patch-radar-v7"), undefined);
+    assert.equal(w.stores.get("patch-radar-v8"), undefined);
   });
 
   await t("le richieste verso altri siti non passano dal service worker", async () => {
@@ -144,9 +144,9 @@ async function doFetch(w, url, mode) {
 
   await t("attivazione: elimina le vecchie cache (anche quella gonfiata della v6)", async () => {
     const w = makeWorker();
-    await w.ctx.caches.open("patch-radar-v6"); await w.ctx.caches.open("patch-radar-v7"); await w.ctx.caches.open("gpr-prefs");
+    await w.ctx.caches.open("patch-radar-v6"); await w.ctx.caches.open("patch-radar-v8"); await w.ctx.caches.open("gpr-prefs");
     await w.fire("activate", {});
-    assert.deepEqual([...w.stores.keys()].sort(), ["gpr-prefs", "patch-radar-v7"]);
+    assert.deepEqual([...w.stores.keys()].sort(), ["gpr-prefs", "patch-radar-v8"]);
   });
 
 
@@ -241,7 +241,7 @@ print(json.dumps({"pub": fn._b64u(ed25519.public_key(bytes([7]) * 32)), "tags": 
   await t("firma: offline si usa la copia di config.json salvata (la verifica non si spegne)", async () => {
     const spec = { ...BASE, ts: Math.floor(Date.now() / 1000) };
     const { pub } = signed(spec); const w = makeWorker();
-    const c = await w.ctx.caches.open("patch-radar-v7");
+    const c = await w.ctx.caches.open("patch-radar-v8");
     await c.put(`${SCOPE}config.json`, basic(JSON.stringify({ ntfySignKey: pub })));
     await pushMsg(w, { id: "x", event: "message", topic: "t", title: "Falsa", message: "x", tags: [] });
     assert.equal(w.shown[0].tag, "rejected");

@@ -1,10 +1,8 @@
-// Test di patchCadence() in index.html (si lancia dalla radice: node tests/cadence.test.js)
+// Test di patchCadence() in js/cadence.js (si lancia dalla radice: node tests/cadence.test.js)
 const fs = require("fs"), assert = require("assert");
-const src = fs.readFileSync(require("path").join(__dirname, "..", "index.html"), "utf8");
-const m = src.match(/\/\* PATCH-CADENCE:start \*\/([\s\S]*?)\/\* PATCH-CADENCE:end \*\//);
-assert(m, "blocco PATCH-CADENCE non trovato in index.html");
+const src = fs.readFileSync(require("path").join(__dirname, "..", "js", "cadence.js"), "utf8");
 const isPatchItem = it => it.patch === true;
-const patchCadence = new Function("isPatchItem", m[1] + "; return patchCadence;")(isPatchItem);
+const patchCadence = new Function("isPatchItem", src + "; return patchCadence;")(isPatchItem);
 const DAY = 86400, mk = days => days.map(d => ({patch: true, date: 1000000 + d * DAY}));
 
 // ogni 7 giorni, ultima al giorno 21 → prossima al giorno 28

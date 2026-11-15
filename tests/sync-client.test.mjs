@@ -1,12 +1,10 @@
-// Test della sincronizzazione lato app (blocco SYNC-CLIENT di index.html) contro il ponte vero (worker/worker.js).
+// Test della sincronizzazione lato app (js/sync.js) contro il ponte vero (worker/worker.js).
 // Due «dispositivi» finti, ognuno con il suo localStorage e il suo stato. Esecuzione: node tests/sync-client.test.mjs
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import worker, {Team} from "../worker/worker.js";
 
-const src = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
-const m = src.match(/\/\* SYNC-CLIENT:start \*\/([\s\S]*?)\/\* SYNC-CLIENT:end \*\//);
-assert(m, "blocco SYNC-CLIENT non trovato in index.html");
+const syncSrc = fs.readFileSync(new URL("../js/sync.js", import.meta.url), "utf8");
 
 const ORIGIN = "https://condor85.github.io", BRIDGE = "https://ponte.example.workers.dev";
 class MockStorage {
@@ -36,7 +34,7 @@ function device({online = true} = {}) {
     const confirm = confirmFn, location = {hash: "", pathname: "/", search: ""}, history = {replaceState() {}};
     function persistSaved(quiet) { localStorage.setItem("s", JSON.stringify(saved)); localStorage.setItem(REMOVED_KEY, JSON.stringify(savedRemoved)); if (!quiet) syncSoon(); }
     function saveSeen() { const snap = JSON.stringify(seen); if (snap !== seenSnap) { seenSnap = snap; syncSoon(); } }
-    ${m[1]}
+    ${syncSrc}
     return {
       syncNow, syncCreate, syncJoin, syncUnlink, applySync, syncPayload, loadSync,
       get sync() { return sync; }, get err() { return syncErr; },

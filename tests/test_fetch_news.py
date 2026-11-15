@@ -288,9 +288,9 @@ class Outbox(unittest.TestCase):
         self.assertEqual(fn.keywords_of({"title": "Italian added", "contents": "Steam Deck: [b]controller[/b] fix. Workshop mods work again."}), ["controller", "mod", "lang"])
 
     def test_keyword_groups_match_the_app(self):
-        """Gli id dei gruppi devono essere gli stessi in index.html (KW_GROUPS) e qui, altrimenti gli argomenti non combaciano."""
+        """Gli id dei gruppi devono essere gli stessi nell'app (KW_GROUPS in js/notifications.js) e qui, altrimenti gli argomenti non combaciano."""
         import re
-        html = read(os.path.join(os.path.dirname(__file__), "..", "index.html"))
+        html = read(os.path.join(os.path.dirname(__file__), "..", "js", "notifications.js"))
         ids = re.findall(r'\["(\w+)", "[^"]+"\]', re.search(r"const KW_GROUPS = \[(.*?)\];", html).group(1))
         self.assertEqual(ids, list(fn.KEYWORD_GROUPS))
 
