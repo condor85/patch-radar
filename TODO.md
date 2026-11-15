@@ -25,3 +25,13 @@ Idee per Game Patch Radar, in ordine di priorità.
 - [x] Notifica «patch stabile» dopo 48 ore senza hotfix
 - [x] Condividi da Steam verso l'app (share_target)
 - [x] Gruppo di parole «Salvataggi, wipe e incompatibilità»
+
+## Idee da fare (proposte il 15 nov 2026)
+- [ ] Rientro in gioco: per ogni gioco imposti «non gioco da…» e vedi un solo riassunto di cosa è cambiato (finestre di 30 e 90 giorni), generato da Gemini nell'Action
+- [ ] Chiedi alle patch: domanda in italiano e risposta basata sullo storico, con link alle patch citate (endpoint sul ponte che chiama Gemini, limitato per codice personale)
+- [ ] Prossimamente: sezione con uscite e date annunciate (`release_date` dei titoli non ancora usciti e frasi tipo «arriva il 5 dicembre»), con conto alla rovescia e file .ics
+- [ ] Importa dalla libreria Steam: incolli il profilo pubblico e l'app propone i giochi giocati di recente (serve una chiave Web API Steam gratuita sul ponte)
+- [ ] Spezzare `index.html` (circa 2300 righe) in moduli testabili e tenere in un solo file `KEYWORD_GROUPS`/`KW_GROUPS` e `SIGN_VERSION`, oggi duplicati tra Python, `index.html` e `sw.js`
+- [ ] (da valutare) Parole chiave personalizzate per gioco: richiede di salvare le parole sul ponte, perché i nomi degli argomenti ntfy non le possono contenere
+- [ ] (da valutare) «Patch stabile»: aggiungere il confronto delle recensioni recenti Steam prima e dopo la patch; diario del gioco: stato Steam Deck
+- [ ] Verificare su un telefono Android la condivisione da Steam (potrebbe servire reinstallare l'app) e al primo controllo che i dati della scheda Steam (lingue, generi, DLC) vengano letti davvero
