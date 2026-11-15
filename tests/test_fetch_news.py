@@ -546,6 +546,26 @@ class MajorAndWatchTests(unittest.TestCase):
         self.assertEqual(saved["games"][0]["target"], 20.0)
 
 
+class SaveKeywordTests(unittest.TestCase):
+    """Gruppo «Salvataggi, wipe e incompatibilità»."""
+
+    def groups(self, title, body=""):
+        return fn.keywords_of({"title": title, "contents": body})
+
+    def test_matches_saves_wipes_and_incompatibility(self):
+        for text in ("Old save files are no longer compatible", "Server wipe on Friday", "Character wipe", "Save game corruption fixed",
+                     "Incompatible with older saves", "Breaking changes to the world format", "Saves from 0.9 will not load"):
+            self.assertIn("save", self.groups(text), text)
+
+    def test_ignores_unrelated_text(self):
+        for text in ("Fixed a typo in the menu", "Improved lighting", "Savannah biome added", "Saved a few milliseconds on loading"):
+            self.assertNotIn("save", self.groups(text), text)
+
+    def test_group_is_last_and_named(self):
+        self.assertEqual(list(fn.KEYWORD_GROUPS)[-1], "save")
+        self.assertEqual(fn.KEYWORD_GROUPS["save"][0], "Salvataggi, wipe e incompatibilità")
+
+
 def run_main(prev, fetched, details, topic="t", games_json=None):
     """Lancia main() su una cartella temporanea e ritorna (notifiche accodate, news.json salvato)."""
     files = {"games.json": games_json or {"games": [{"appid": 1, "name": "G1"}]}, "config.json": {"ntfyTopic": topic}, "data/news.json": prev}

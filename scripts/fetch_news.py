@@ -482,6 +482,7 @@ KEYWORD_GROUPS = {
     "mod": ("Mod e Workshop", re.compile(r"\bmods?\b|\bmodding\b|\bworkshop\b", re.I)),
     "perf": ("Prestazioni", re.compile(r"\bperformance\b|\boptimi[sz]\w*|\bfps\b|\bframe ?rate\b|\bstutter\w*|\bmemory leak", re.I)),
     "lang": ("Lingua italiana", re.compile(r"\bitalian\b|\bitaliano\b|\blocali[sz]ation\b|\btranslations?\b", re.I)),
+    "save": ("Salvataggi, wipe e incompatibilità", re.compile(r"\bsave ?(?:games?|files?|data)\b|\bsaves\b|\b(?:character |progress |server )?wipes?\b|\bincompatib\w*|\bbackwards? compat\w*|\bno longer compatible\b|\bbreaking changes?\b", re.I)),
 }
 
 

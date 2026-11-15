@@ -308,7 +308,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
 </div>
 
 <script>
-const APP_VERSION = "2026-11-15.1";
+const APP_VERSION = "2026-11-15.2";
 /* Se online c'è una versione più recente dell'app, la ricarica da sola (una volta sola per versione). */
 (async () => {
  if (location.protocol === "file:") return;
@@ -932,6 +932,34 @@ function h(tag, props, ...kids) {
 function parseAppId(text) {
  const m = String(text).match(/store\.steampowered\.com\/app\/(\d+)/i) || String(text).trim().match(/^(\d{2,9})$/);
  return m ? Number(m[1]) : null;
+}
+/* PATCH-SHARE:start */
+/* Condividi da Steam: la pagina del gioco si condivide verso «Patch Radar» (share_target in manifest.webmanifest) e arriva come ?title=&text=&url=.
+   Dal testo condiviso si prende solo il numero dell'app (mai il resto): è l'unico dato che finisce nel ponte. */
+function sharedGame(search) {
+ let p; try { p = new URLSearchParams(search); } catch { return null; }
+ const parts = ["url", "text", "title"].map(k => String(p.get(k) || "").slice(0, 600));
+ let appid = null;
+ for (const t of parts) { const m = t.match(/store\.steampowered\.com\/app\/(\d{1,9})/i); if (m) { appid = Number(m[1]); break; } }
+ if (!appid) return p.has("url") || p.has("text") || p.has("title") ? {appid: null, name: ""} : null;
+ const name = (p.get("title") || parts[1].replace(/https?:\/\/\S+/g, "")).replace(/\s+(on|su) Steam\s*$/i, "").replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+ return {appid, name};
+}
+/* PATCH-SHARE:end */
+let pendingShare = null;
+function shareFromQuery() {
+ const g = sharedGame(location.search);
+ if (!g) return;
+ try { history.replaceState(null, "", location.pathname + location.hash); } catch {}
+ pendingShare = g;
+}
+async function shareAddPending() {
+ const g = pendingShare; pendingShare = null;
+ if (!g) return;
+ if (!g.appid) { toast("Dal link condiviso non riconosco nessun gioco Steam."); return; }
+ if (!bridgePw || !bridgeUrl()) { toast("Per aggiungere giochi serve la modalità amministratore (⚙ → Gestisci)."); return; }
+ if (!confirm("Aggiungere «" + (g.name || "App Steam n. " + g.appid) + "» all'app per tutti?")) return;
+ try { await bridgeAdd({appid: g.appid}); } catch (e) { toast(e.message); }
 }
 let searchConsent = false;   // consenso a usare servizi esterni per la ricerca per nome (vale finché la pagina resta aperta)
 async function searchGames(term) {
@@ -1588,7 +1616,7 @@ const NTFY = "https://ntfy.sh";
 let notifPref = {on: false, off: [], major: [], kw: [], mode: "now", news: false, sale: false, stable: false, quiet: {on: false, from: "23:00", to: "08:00"}};
 /* Parole chiave: stessi id di KEYWORD_GROUPS in scripts/fetch_news.py. kw = gruppi scelti: avviso anche per le patch piccole che li contengono,
    ma solo sui giochi con «Solo grosse» (sugli altri arrivano già tutte le patch) e in modalità «Subito». */
-const KW_GROUPS = [["coop", "Co-op e multiplayer"], ["crash", "Crash e blocchi"], ["controller", "Controller e Steam Deck"], ["mod", "Mod e Workshop"], ["perf", "Prestazioni"], ["lang", "Lingua italiana"]];
+const KW_GROUPS = [["coop", "Co-op e multiplayer"], ["crash", "Crash e blocchi"], ["controller", "Controller e Steam Deck"], ["mod", "Mod e Workshop"], ["perf", "Prestazioni"], ["lang", "Lingua italiana"], ["save", "Salvataggi, wipe e incompatibilità"]];
 let notifMsg = null;
 function loadNotif() {
  try {
@@ -2127,7 +2155,7 @@ applyTheme(currentTheme());
  });
 })();
 fetch("config.json", {cache: "no-store"}).then(r => r.ok ? r.json() : null).then(c => {
- if (c) { CFG = c; setTopicLink(); renderAdmin(); teamRefresh(); renderSync(); if (pendingSync) syncJoinPending(); else syncNow(); }   // solo ora si conosce l'indirizzo del ponte: da qui si può caricare la squadra
+ if (c) { CFG = c; setTopicLink(); renderAdmin(); teamRefresh(); renderSync(); if (pendingSync) syncJoinPending(); else syncNow(); shareAddPending(); }   // solo ora si conosce l'indirizzo del ponte: da qui si può caricare la squadra
 }).catch(() => {});
 
 /* ---------- Installazione come app (PWA) ---------- */
@@ -2296,6 +2324,7 @@ refreshAll();
 teamRefresh();
 teamFromHash();
 syncFromHash();
+shareFromQuery();
 maybeWelcome(returning);
 </script>
 </body>

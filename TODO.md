@@ -23,3 +23,5 @@ Idee per Game Patch Radar, in ordine di priorità.
 - [x] Test automatici prima della pubblicazione (`.github/workflows/tests.yml`)
 - [x] Diario del gioco: avviso per lingua italiana, uscita dall'accesso anticipato, nuovi DLC
 - [x] Notifica «patch stabile» dopo 48 ore senza hotfix
+- [x] Condividi da Steam verso l'app (share_target)
+- [x] Gruppo di parole «Salvataggi, wipe e incompatibilità»
