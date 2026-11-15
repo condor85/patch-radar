@@ -75,6 +75,13 @@ jobs:
           mkdir _site
           cp -r index.html manifest.webmanifest sw.js qr.js shared.js config.json icons js data _site/
 
+      # Calcola la versione dell'app dal contenuto dei file e la scrive in tutti i punti insieme (APP_VERSION, ?v= degli script,
+      # nome della cache del service worker) solo nella copia pubblicata. Se non va a buon fine il sito esce con la versione dei sorgenti.
+      - name: Versione dell'app
+        if: steps.fetch.outputs.changed == 'true' || github.event_name != 'schedule'
+        continue-on-error: true
+        run: python3 scripts/stamp_version.py _site
+
       # Se in config.json c'è l'indirizzo del ponte di amministrazione ("adminApi"), lo aggiunge alla Content-Security-Policy
       # del sito pubblicato (solo un'origine https valida). Se non va a buon fine il sito esce comunque, col ponte non raggiungibile.
       - name: Abilita il ponte di amministrazione
