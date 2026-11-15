@@ -1,0 +1,15 @@
+# Analisi statica di scripts/ e tests/ (stessa versione in CI: vedi .github/workflows/tests.yml).
+# E9/F = errori di sintassi e nomi non definiti o inutilizzati, B = errori tipici (bugbear), S = sicurezza (bandit).
+target-version = "py311"
+line-length = 200
+
+[lint]
+select = ["E9", "F", "B", "S"]
+ignore = [
+  "S101",  # assert: usato dai test
+  "S310",  # urllib: gli indirizzi sono controllati da http() (solo http/https)
+  "B904",  # raise ... from: lo stile dello script è un altro
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["S105", "S106", "S108", "S603", "S607", "S404", "B011"]

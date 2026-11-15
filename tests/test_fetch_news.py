@@ -679,5 +679,78 @@ class StablePatchTests(unittest.TestCase):
         self.assertEqual(saved["games"][0]["stable"], "a")
 
 
+class RobustnessTests(unittest.TestCase):
+    """Scritture atomiche, file rotti che non vanno sovrascritti, risposte e indirizzi non ammessi."""
+
+    def test_write_json_atomic_replaces_the_file_and_leaves_no_temp_files(self):
+        with workdir({"data/x.json": {"vecchio": True}}):
+            fn.write_json_atomic("data/x.json", {"nuovo": "è"}, ensure_ascii=False)
+            self.assertEqual(json.loads(read("data/x.json")), {"nuovo": "è"})
+            self.assertEqual(os.listdir("data"), ["x.json"])
+
+    def test_write_json_atomic_creates_the_folder(self):
+        with workdir({}):
+            fn.write_json_atomic("data/nuova/x.json", {"a": 1})
+            self.assertEqual(json.loads(read("data/nuova/x.json")), {"a": 1})
+
+    def test_a_failed_write_keeps_the_old_file_and_removes_the_temp_file(self):
+        with workdir({"data/x.json": {"vecchio": True}}):
+            with self.assertRaises(TypeError):
+                fn.write_json_atomic("data/x.json", {"non_serializzabile": object()})
+            self.assertEqual(json.loads(read("data/x.json")), {"vecchio": True})
+            self.assertEqual(os.listdir("data"), ["x.json"])
+
+    def test_strict_read_missing_file_gives_the_default(self):
+        with workdir({}):
+            self.assertEqual(fn.read_json_strict("data/non_c_e.json", {"d": 1}), {"d": 1})
+
+    def test_strict_read_stops_on_a_broken_file_instead_of_resetting(self):
+        with workdir({"data/news.json": '{"games": [troncato'}):
+            err = io.StringIO()
+            with contextlib.redirect_stdout(err), self.assertRaises(SystemExit) as cm:
+                fn.read_json_strict("data/news.json", {})
+            self.assertEqual(cm.exception.code, 1)
+            self.assertIn("::error", err.getvalue())
+            self.assertEqual(read("data/news.json"), '{"games": [troncato')   # non toccato
+
+    def test_main_does_not_overwrite_a_broken_news_file(self):
+        with workdir({"data/news.json": "", "games.json": {"games": [{"appid": 1}]}}):
+            with mock.patch.object(fn, "load_games", return_value=[{"appid": 1, "name": "G1"}]), \
+                    mock.patch.object(fn, "fetch_game", side_effect=AssertionError("non deve neppure partire")), \
+                    contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+                fn.main()
+            self.assertEqual(read("data/news.json"), "")
+
+    def test_main_rejects_a_news_file_that_is_not_an_object(self):
+        with workdir({"data/news.json": "[]"}):
+            with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+                fn.main()
+            self.assertEqual(read("data/news.json"), "[]")
+
+    def test_a_broken_price_history_is_not_reset(self):
+        with workdir({"data/prices.json": "{rotto"}):
+            with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+                fn.update_price_history([{"appid": 1, "price": {"cents": 100, "final": "1,00€"}}], 1000)
+            self.assertEqual(read("data/prices.json"), "{rotto")
+
+    def test_http_accepts_only_http_and_https(self):
+        for url in ("file:///etc/passwd", "ftp://example.com/x", "gopher://x", ""):
+            with mock.patch.object(fn.urllib.request, "urlopen", side_effect=AssertionError("non deve aprire nulla")):
+                with self.assertRaises(ValueError):
+                    fn.http(url)
+
+    def test_read_limited_refuses_oversized_responses(self):
+        class Resp:
+            def __init__(self, n):
+                self.n = n
+
+            def read(self, k=-1):
+                return b"x" * (self.n if k < 0 else min(self.n, k))
+
+        self.assertEqual(len(fn.read_limited(Resp(10), limit=10)), 10)
+        with self.assertRaises(ValueError):
+            fn.read_limited(Resp(11), limit=10)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -52,7 +52,9 @@ function parseTarget(v) {
 }
 
 function corsHeaders(env, origin) {
-  const h = {"Vary": "Origin", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"};
+  // Il ponte restituisce solo JSON: queste intestazioni impediscono che una risposta venga mai interpretata come pagina
+  // (script, frame, referrer) se qualcuno la aprisse direttamente nel browser.
+  const h = {"Vary": "Origin", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'", "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY"};
   if (origin && origin === env.ALLOWED_ORIGIN) {
     h["Access-Control-Allow-Origin"] = origin;
     h["Access-Control-Allow-Methods"] = "POST, OPTIONS";
@@ -170,8 +172,28 @@ async function steamGame(appid) {
 }
 
 /* ---------- Azioni ---------- */
+/* Legge il corpo fermandosi appena supera `maxBytes`: così una richiesta enorme non viene caricata tutta in memoria prima di essere rifiutata. */
+async function readLimited(request, maxBytes) {
+  const declared = Number(request.headers.get("Content-Length"));
+  if (Number.isFinite(declared) && declared > maxBytes) throw new HttpError(413, "Richiesta troppo grande.");
+  if (!request.body) return "";
+  const reader = request.body.getReader(), chunks = [];
+  let total = 0;
+  for (;;) {
+    const {done, value} = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) { try { await reader.cancel(); } catch {} throw new HttpError(413, "Richiesta troppo grande."); }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) { all.set(c, at); at += c.byteLength; }
+  return dec.decode(all);
+}
+
 async function readBody(request, max = MAX_BODY) {
-  const text = await request.text();
+  const text = await readLimited(request, max * 4);   // il limite in caratteri resta sotto; qui basta un tetto in byte (UTF-8: fino a 4 per carattere)
   if (text.length > max) throw new HttpError(413, "Richiesta troppo grande.");
   if (!text) return {};
   try { const o = JSON.parse(text); return o && typeof o === "object" && !Array.isArray(o) ? o : {}; }

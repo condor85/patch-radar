@@ -16,10 +16,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false   # i test non scrivono sul repository: il token non resta nella cartella
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: "22"
+      - name: Analisi statica (Python)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/lint"
+          "$RUNNER_TEMP/lint/bin/pip" install --quiet "ruff==0.16.9"
+          "$RUNNER_TEMP/lint/bin/ruff" check scripts tests
       - name: Script di aggiornamento (Python)
         run: python3 -m unittest discover -s tests -v
       - name: Service worker
@@ -32,5 +39,7 @@ jobs:
         run: node tests/sync-client.test.mjs
       - name: Condivisione da Steam
         run: node tests/share.test.js
+      - name: Elenco giochi
+        run: node tests/core.test.js
       - name: Struttura dell'app
         run: node tests/structure.test.js

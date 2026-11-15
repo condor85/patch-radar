@@ -1,0 +1,10 @@
+# Controlla ogni settimana se le azioni GitHub usate nei workflow hanno una versione nuova e apre una pull request.
+# Le azioni sono fissate a un commit preciso (non a un'etichetta che si può spostare): Dependabot aggiorna il commit.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"

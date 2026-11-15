@@ -248,6 +248,40 @@ print(json.dumps({"pub": fn._b64u(ed25519.public_key(bytes([7]) * 32)), "tags": 
     assert.equal(w.shown[0].tag, "rejected");
   });
 
+  await t("firma: senza rete né copia di config.json si usa l'ultima chiave vista (la verifica non si spegne)", async () => {
+    const spec = { ...BASE, ts: Math.floor(Date.now() / 1000) };
+    const { pub } = signed(spec); const w = await withKey(pub);
+    await pushMsg(w, msgOf(spec));                                   // la rete risponde: la chiave viene ricordata
+    assert.notEqual(w.shown[0].tag, "rejected");
+    w.stores.get("patch-radar-v8")?.clear();                         // nessuna copia di config.json
+    w.ctx.fetchImpl = async () => { throw new TypeError("offline"); };
+    await pushMsg(w, { id: "x", event: "message", topic: "t", title: "Falsa", message: "x", click: "https://evil.example/", tags: [] });
+    assert.equal(w.shown[1].tag, "rejected");
+    await pushMsg(w, msgOf(spec, { id: "y" }));                      // quella vera passa anche offline
+    assert.notEqual(w.shown[2].tag, "rejected"); assert.equal(w.shown[2].title, BASE.title);
+  });
+
+  await t("firma: anche una risposta di errore del server (500) non spegne la verifica", async () => {
+    const spec = { ...BASE, ts: Math.floor(Date.now() / 1000) };
+    const { pub } = signed(spec); const w = await withKey(pub);
+    await pushMsg(w, msgOf(spec));
+    w.ctx.fetchImpl = async () => basic("errore", 500);
+    await pushMsg(w, { id: "x", event: "message", topic: "t", title: "Falsa", message: "x", tags: [] });
+    assert.equal(w.shown[1].tag, "rejected");
+  });
+
+  await t("firma: se la chiave viene tolta apposta da config.json, la verifica si spegne davvero", async () => {
+    const spec = { ...BASE, ts: Math.floor(Date.now() / 1000) };
+    const { pub } = signed(spec); const w = await withKey(pub);
+    await pushMsg(w, msgOf(spec));
+    await withKey(undefined, w);                                     // la rete ora risponde senza chiave
+    await pushMsg(w, { id: "x", event: "message", topic: "t", title: "Non firmata", message: "ok", tags: [] });
+    assert.equal(w.shown[1].title, "Non firmata");
+    w.ctx.fetchImpl = async () => { throw new TypeError("offline"); };
+    await pushMsg(w, { id: "z", event: "message", topic: "t", title: "Ancora non firmata", message: "ok", tags: [] });
+    assert.equal(w.shown[2].title, "Ancora non firmata");            // ricorda che la chiave non c'è più
+  });
+
   await t("firma: la stessa notifica riproposta si sostituisce invece di duplicarsi (stesso tag)", async () => {
     const spec = { ...BASE, ts: Math.floor(Date.now() / 1000) };
     const { pub } = signed(spec); const w = await withKey(pub);

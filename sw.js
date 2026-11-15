@@ -68,12 +68,30 @@ const b64u = s => Uint8Array.from(atob(String(s).replace(/-/g, "+").replace(/_/g
 const trimNl = s => String(s == null ? "" : s).replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, "");
 const tagValue = (m, prefix) => ((Array.isArray(m.tags) ? m.tags : []).find(t => typeof t === "string" && t.startsWith(prefix)) || "").slice(prefix.length);
 
+const SIGNKEY_ENTRY = "signkey";   // ultima chiave letta con successo, nella stessa cache delle preferenze (non viene mai cancellata dagli aggiornamenti dell'app)
+async function rememberSignKey(key) {
+  try { await (await caches.open(PREFS)).put(SIGNKEY_ENTRY, new Response(JSON.stringify({key}))); } catch (err) {}
+}
+async function recalledSignKey() {
+  try { const r = await (await caches.open(PREFS)).match(SIGNKEY_ENTRY); const d = r ? await r.json() : null; return d && typeof d.key === "string" ? d.key : ""; } catch (err) { return ""; }
+}
 async function signKey() {
   const url = new URL("config.json", self.registration.scope).href;
+  let fromNetwork = true;
   for (const get of [() => fetch(url, {cache: "no-cache"}), () => caches.match(url)]) {
-    try { const r = await get(); if (r && r.ok !== false) return String((await r.json()).ntfySignKey || "").trim(); } catch (err) {}
+    try {
+      const r = await get();
+      if (r && r.ok !== false) {
+        const key = String((await r.json()).ntfySignKey || "").trim();
+        if (fromNetwork) await rememberSignKey(key);
+        return key;
+      }
+    } catch (err) {}
+    fromNetwork = false;
   }
-  return "";
+  // Né la rete né la copia di config.json rispondono: si usa l'ultima chiave vista. Senza questo, un momento di rete assente
+  // spegnerebbe la verifica proprio quando qualcuno può approfittarne per far passare una notifica falsa.
+  return recalledSignKey();
 }
 // true: firma valida · false: assente, scaduta o non valida · null: questo browser non sa verificare Ed25519 (si accetta, restano i controlli sui link)
 async function verifyMessage(m, pub) {

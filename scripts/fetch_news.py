@@ -4,7 +4,7 @@
 Le notifiche ntfy NON partono durante il controllo: vengono accodate in outbox.json e inviate dal passo successivo
 (`python3 scripts/fetch_news.py --send`) solo dopo che i dati sono stati salvati nel repository. Così, se il salvataggio
 fallisce, la volta dopo gli stessi annunci risultano ancora nuovi e nessuna notifica viene mandata due volte."""
-import base64, datetime, json, os, re, sys, time, urllib.error, urllib.parse, urllib.request
+import base64, contextlib, datetime, json, os, re, sys, tempfile, time, urllib.error, urllib.parse, urllib.request
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -86,18 +86,64 @@ DIGEST_HOUR = int(os.environ.get("DIGEST_HOUR", "18"))   # ora italiana del riep
 TZ = ZoneInfo("Europe/Rome")
 
 
+MAX_RESPONSE = 16 * 1024 * 1024   # byte: una risposta più grande non è una pagina di note, e non deve riempire la memoria dell'Action
+
+
+def read_limited(resp, limit=MAX_RESPONSE):
+    """Legge una risposta HTTP rifiutando quelle oltre `limit` byte."""
+    body = resp.read(limit + 1)
+    if len(body) > limit:
+        raise ValueError(f"risposta troppo grande (oltre {limit // (1024 * 1024)} MB)")
+    return body
+
+
 def http(url, data=None, headers=None, retries=3):
+    # urllib aprirebbe anche file:// e ftp://: gli indirizzi qui arrivano da costanti o variabili d'ambiente, ma si ammettono solo http(s)
+    if not str(url).lower().startswith(("https://", "http://")):
+        raise ValueError("indirizzo non consentito: serve http o https")
     last = None
     for i in range(retries):
         try:
             req = urllib.request.Request(url, data=data, headers={"User-Agent": "patch-radar/1.0", **(headers or {})})
             with urllib.request.urlopen(req, timeout=30) as r:
-                return r.read()
+                return read_limited(r)
         except Exception as e:  # noqa
             last = e
             if i < retries - 1:  # dopo l'ultimo tentativo è inutile aspettare
                 time.sleep(2 * (i + 1))
     raise last
+
+
+def write_json_atomic(path, obj, **kwargs):
+    """Scrive un file JSON in modo atomico: prima su un file temporaneo accanto, poi lo rinomina. Se il processo viene
+    interrotto a metà, il file vero resta quello di prima invece di restare a metà (e di essere poi committato così)."""
+    folder = os.path.dirname(path) or "."
+    os.makedirs(folder, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".tmp-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(obj, f, **kwargs)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+        raise
+
+
+def read_json_strict(path, default):
+    """Legge un file JSON che contiene dati non rigenerabili (storico degli annunci, prezzo minimo).
+    Se manca, è la prima esecuzione e si parte da `default`. Se esiste ma non si legge, si ferma con un errore chiaro:
+    ripartire da zero cancellerebbe in silenzio lo storico e salterebbe tutte le notifiche (sembrerebbe una «prima raccolta»)."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return default
+    except (OSError, ValueError) as e:
+        print(f"::error file={path}::{path} esiste ma non è leggibile ({e}). Non lo sovrascrivo: ripristina l'ultima versione buona dalla cronologia di Git.")
+        sys.exit(1)
 
 
 def get_json(url):
@@ -249,9 +295,7 @@ def update_players(games, now):
         out[k] = old if stable else {"n": n, "ts": now}
     if out == prev:
         return False
-    os.makedirs("data", exist_ok=True)
-    with open(PLAYERS_OUT, "w", encoding="utf-8") as f:
-        json.dump({"games": out}, f, separators=(",", ":"))
+    write_json_atomic(PLAYERS_OUT, {"games": out}, separators=(",", ":"))
     return True
 
 
@@ -259,12 +303,9 @@ def update_price_history(games, now):
     """Storico prezzi in data/prices.json: per gioco il minimo visto finora (`min`: cents, testo, data) e le ultime variazioni
     (`h`: coppie [data, centesimi]). Si scrive solo quando il prezzo cambia, quindi il repository non riceve commit inutili.
     Il minimo parte da quando l'app ha iniziato a seguire il prezzo, non è il minimo assoluto di Steam. Ritorna True se il file è cambiato."""
-    try:
-        with open(PRICES_OUT, encoding="utf-8") as f:
-            prev = json.load(f).get("games", {})
-        if not isinstance(prev, dict):
-            prev = {}
-    except Exception:  # noqa
+    data = read_json_strict(PRICES_OUT, {})   # il minimo storico non si rigenera: un file rotto non va azzerato in silenzio
+    prev = data.get("games", {}) if isinstance(data, dict) else {}
+    if not isinstance(prev, dict):
         prev = {}
     out = {k: dict(v) for k, v in prev.items() if isinstance(v, dict)}
     for g in games:
@@ -284,9 +325,7 @@ def update_price_history(games, now):
         out[k] = e
     if out == prev:
         return False
-    os.makedirs("data", exist_ok=True)
-    with open(PRICES_OUT, "w", encoding="utf-8") as f:
-        json.dump({"games": out}, f, separators=(",", ":"))
+    write_json_atomic(PRICES_OUT, {"games": out}, separators=(",", ":"))
     return True
 
 
@@ -335,7 +374,7 @@ def gemini_call(system, user, max_tokens=2000, timeout=120):
             "Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY, "User-Agent": "patch-radar/1.0"})
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
-                data = json.loads(r.read())
+                data = json.loads(read_limited(r))
             text = "".join(p.get("text", "") for p in data["candidates"][0]["content"]["parts"]).strip()
             if text:
                 return text
@@ -663,8 +702,7 @@ def ntfy_send(topics, title, message, tags, click=""):
 def write_outbox():
     """Scrive la coda su disco (o elimina quella vecchia). outbox.json non va nel repository: serve solo al passo `--send`."""
     if OUTBOX_ITEMS:
-        with open(OUTBOX, "w", encoding="utf-8") as f:
-            json.dump(OUTBOX_ITEMS, f, ensure_ascii=False)
+        write_json_atomic(OUTBOX, OUTBOX_ITEMS, ensure_ascii=False)
     elif os.path.exists(OUTBOX):
         os.remove(OUTBOX)
 
@@ -767,11 +805,10 @@ def send_digest(games, since):
 
 
 def main():
-    try:
-        with open(OUT, encoding="utf-8") as f:
-            prev = json.load(f)
-    except Exception:
-        prev = {}
+    prev = read_json_strict(OUT, {})   # se news.json esiste ma è rotto ci si ferma: ripartire da {} cancellerebbe lo storico e le notifiche
+    if not isinstance(prev, dict):
+        print(f"::error file={OUT}::{OUT} non ha il formato atteso (serve un oggetto JSON). Non lo sovrascrivo.")
+        sys.exit(1)
     now = int(time.time())
     pg = prev.get("games")
     old = {str(g["appid"]): g for g in pg if isinstance(g, dict)} if isinstance(pg, list) else {}
@@ -860,9 +897,7 @@ def main():
         players_changed = update_players(games, now)
         players_changed = update_price_history(games, now) or players_changed
     if news_changed:
-        os.makedirs("data", exist_ok=True)
-        with open(OUT, "w", encoding="utf-8") as f:
-            json.dump({"updated": now, "ntfy_key": ntfy_key, "digest_ts": digest_ts, "games": games}, f, ensure_ascii=False, separators=(",", ":"))
+        write_json_atomic(OUT, {"updated": now, "ntfy_key": ntfy_key, "digest_ts": digest_ts, "games": games}, ensure_ascii=False, separators=(",", ":"))
     changed = news_changed or players_changed
     write_outbox()
     out = os.environ.get("GITHUB_OUTPUT")

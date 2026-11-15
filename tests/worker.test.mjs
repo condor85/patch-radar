@@ -110,6 +110,36 @@ test("percorsi e metodi sconosciuti → 404 / 405 (anche per nomi come __proto__
   assert.equal((await call(env, "/add", {}, {method: "GET"})).status, 405);
 });
 
+test("le risposte hanno intestazioni che impediscono di trattarle come pagine", async () => {
+  const env = makeEnv(); mockNet();
+  const r = await call(env, "/login", {});
+  assert.equal(r.headers.get("Content-Security-Policy"), "default-src 'none'; frame-ancestors 'none'");
+  assert.equal(r.headers.get("Referrer-Policy"), "no-referrer");
+  assert.equal(r.headers.get("X-Frame-Options"), "DENY");
+  assert.equal(r.headers.get("X-Content-Type-Options"), "nosniff");
+  const bad = await call(env, "/login", {}, {auth: "Bearer sbagliata-sbagliata"});   // anche gli errori
+  assert.equal(bad.status, 401); assert.equal(bad.headers.get("X-Frame-Options"), "DENY");
+});
+
+test("un corpo enorme viene rifiutato senza essere letto per intero", async () => {
+  const env = makeEnv(); mockNet();
+  // dichiarato troppo grande: rifiutato subito
+  const big = new Request("https://x/search", {method: "POST", body: "x".repeat(20000), headers: {Authorization: "Bearer " + PASSWORD, Origin: ORIGIN}});
+  assert.equal((await worker.fetch(big, env)).status, 413);
+  // senza Content-Length (flusso): si ferma al tetto in byte
+  let pulled = 0;
+  const stream = new ReadableStream({pull(c) { pulled += 1; c.enqueue(new Uint8Array(4096)); if (pulled > 1000) c.close(); }});
+  const streamed = new Request("https://x/search", {method: "POST", body: stream, duplex: "half", headers: {Authorization: "Bearer " + PASSWORD, Origin: ORIGIN}});
+  assert.equal((await worker.fetch(streamed, env)).status, 413);
+  assert.ok(pulled < 50, "ha letto " + pulled + " blocchi invece di fermarsi");
+});
+
+test("caratteri non ASCII entro il limite passano (il tetto in byte non li penalizza)", async () => {
+  const env = makeEnv(); mockNet({steam: {search: {items: [{id: 5, name: "Gioco"}]}}});
+  const r = await call(env, "/search", {q: "è".repeat(50)});
+  assert.equal(r.status, 200);
+});
+
 test("richiesta troppo grande o non JSON → 413 / 400", async () => {
   mockNet(); const env = makeEnv();
   assert.equal((await call(env, "/search", {q: "x".repeat(5000)})).status, 413);

@@ -28,7 +28,14 @@ const HIDDEN_KEY = "game_patch_radar_hidden_v1";
 let GAMES = {};          // appid (stringa) -> {name, appid, store}
 let ORDER = [];           // ordine dei giochi (le chiavi numeriche di un oggetto verrebbero riordinate)
 let hidden = [];         // giochi nascosti su questo dispositivo
+/* Un elenco di giochi può arrivare dal sito, dal browser (dati salvati, possono essere vecchi o rovinati) o dal ponte: si tengono solo le voci con un numero app Steam valido,
+   perché l'appid entra negli indirizzi (pagina del negozio, argomenti delle notifiche). */
+const validAppId = v => (typeof v === "number" || (typeof v === "string" && /^\d{1,9}$/.test(v))) && Number.isInteger(Number(v)) && Number(v) > 0 && Number(v) <= 999999999;
 function setGames(list) {
+ if (!Array.isArray(list)) return;
+ const input = list;
+ list = input.filter(x => x && typeof x === "object" && validAppId(x.appid)).map(x => ({...x, appid: Number(x.appid)}));
+ if (input.length && !list.length) return;   // tutte le voci rovinate: meglio tenere l'elenco che c'è che restare senza giochi
  const g = {};
  for (const x of list) {
   const k = String(x.appid);
