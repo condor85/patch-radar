@@ -287,12 +287,13 @@ class Outbox(unittest.TestCase):
         self.assertEqual(fn.keywords_of({"title": "x", "contents": "[img]co-op.png[/img] Nothing here, a modern modem."}), [])
         self.assertEqual(fn.keywords_of({"title": "Italian added", "contents": "Steam Deck: [b]controller[/b] fix. Workshop mods work again."}), ["controller", "mod", "lang"])
 
-    def test_keyword_groups_match_the_app(self):
-        """Gli id dei gruppi devono essere gli stessi nell'app (KW_GROUPS in js/notifications.js) e qui, altrimenti gli argomenti non combaciano."""
+    def test_keyword_groups_and_sign_version_come_from_shared_js(self):
+        """Id, nomi e ordine dei gruppi (e SIGN_VERSION) arrivano da shared.js, lo stesso file che usano l'app e il service worker."""
         import re
-        html = read(os.path.join(os.path.dirname(__file__), "..", "js", "notifications.js"))
-        ids = re.findall(r'\["(\w+)", "[^"]+"\]', re.search(r"const KW_GROUPS = \[(.*?)\];", html).group(1))
-        self.assertEqual(ids, list(fn.KEYWORD_GROUPS))
+        text = read(os.path.join(os.path.dirname(__file__), "..", "shared.js"))
+        shared = json.loads(re.search(r"const SHARED = (\{.*?\n\});", text, re.S).group(1))
+        self.assertEqual([[gid, name] for gid, (name, _) in fn.KEYWORD_GROUPS.items()], shared["keywordGroups"])
+        self.assertEqual(fn.SIGN_VERSION, shared["signVersion"])
 
     def test_send_outbox_sends_then_deletes_file(self):
         with workdir():

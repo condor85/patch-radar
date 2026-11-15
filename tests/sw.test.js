@@ -32,6 +32,7 @@ function makeWorker() {
   ctx.fetchImpl = async () => { throw new TypeError("offline"); };
   ctx.fetch = (...a) => ctx.fetchImpl(...a);
   vm.createContext(ctx);
+  ctx.importScripts = (...names) => names.forEach(n => vm.runInContext(fs.readFileSync(path.join(__dirname, "..", n), "utf8"), ctx, { filename: n }));
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "sw.js"), "utf8"), ctx);
   const waits = [];
   const fire = (type, ev) => { ev.waitUntil = p => waits.push(p); handlers[type](ev); return Promise.all(waits.splice(0)); };

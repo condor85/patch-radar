@@ -1,6 +1,7 @@
+importScripts("shared.js");   // costanti comuni con l'app e l'Action (SIGN_VERSION)
 const CACHE = "patch-radar-v8";
 const PREFS = "gpr-prefs";   // preferenze inviate dalla pagina (ore silenziose)
-const SHELL = ["./", "index.html", "manifest.webmanifest", "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "qr.js",
+const SHELL = ["./", "index.html", "manifest.webmanifest", "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "qr.js", "shared.js",
   "js/core.js", "js/seen.js", "js/utils.js", "js/network.js", "js/viewer.js", "js/admin.js", "js/share.js", "js/admin-games.js", "js/cards.js", "js/cadence.js", "js/render.js", "js/notifications.js", "js/dialogs.js", "js/team.js", "js/shell-ui.js", "js/sync.js", "js/boot.js"];
 // Siti esterni a cui una notifica può rimandare (oltre all'app stessa). Il payload arriva da un argomento ntfy pubblico:
 // chiunque ne conosca il nome può scriverci, quindi non ci si fida mai di un link arbitrario.
@@ -62,7 +63,6 @@ async function isQuiet() {
    L'argomento ntfy è pubblico (sta in config.json): chiunque potrebbe scrivervi. Per questo l'Action firma ogni notifica con
    una chiave Ed25519 privata (secret NTFY_SIGN_KEY) e qui si verifica la firma con la chiave pubblica di config.json
    (campo ntfySignKey). Senza quel campo la verifica è spenta; con il campo, le notifiche non firmate vengono scartate. */
-const SIGN_VERSION = "patch-radar-v1";   // deve coincidere con scripts/fetch_news.py
 const SIGN_MAX_AGE = 7 * 86400;          // una notifica firmata vecchia di oltre una settimana non è più valida (riproposta)
 const b64u = s => Uint8Array.from(atob(String(s).replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
 const trimNl = s => String(s == null ? "" : s).replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, "");

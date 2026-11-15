@@ -5,9 +5,8 @@ const NOTIF_KEY = "game_patch_radar_notif_v1";
 const NTFY = "https://ntfy.sh";
 /* major = giochi di cui si vogliono solo le patch grosse; off = giochi senza avvisi; mode = «now» (subito) o «digest» (riepilogo serale); news = anche annunci, eventi e novità della scheda Steam; sale = saldi; stable = avviso «patch stabile»; quiet = ore senza suono */
 let notifPref = {on: false, off: [], major: [], kw: [], mode: "now", news: false, sale: false, stable: false, quiet: {on: false, from: "23:00", to: "08:00"}};
-/* Parole chiave: stessi id di KEYWORD_GROUPS in scripts/fetch_news.py. kw = gruppi scelti: avviso anche per le patch piccole che li contengono,
+/* Parole chiave: id, nomi e ordine dei gruppi stanno in shared.js (KW_GROUPS), gli stessi che usa l'Action. kw = gruppi scelti: avviso anche per le patch piccole che li contengono,
    ma solo sui giochi con «Solo grosse» (sugli altri arrivano già tutte le patch) e in modalità «Subito». */
-const KW_GROUPS = [["coop", "Co-op e multiplayer"], ["crash", "Crash e blocchi"], ["controller", "Controller e Steam Deck"], ["mod", "Mod e Workshop"], ["perf", "Prestazioni"], ["lang", "Lingua italiana"], ["save", "Salvataggi, wipe e incompatibilità"]];
 let notifMsg = null;
 function loadNotif() {
  try {

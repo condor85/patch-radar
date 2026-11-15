@@ -31,6 +31,13 @@ assert(cp, "comando di copia non trovato in update.yml");
 const copied = cp[1].split(/\s+/);
 for (const f of files) assert(copied.includes(f) || copied.includes(f.split("/")[0]), `${f}: update.yml non lo copia nel sito`);
 
+// shared.js è la fonte unica di SIGN_VERSION e KW_GROUPS: viene caricato per primo e nessun altro file le ridefinisce
+assert.equal(files[0], "shared.js", "shared.js deve essere il primo script");
+assert(/importScripts\("shared\.js"\)/.test(read("sw.js")), "sw.js deve caricare shared.js con importScripts");
+for (const f of [...files, "sw.js"]) if (f !== "shared.js") assert(!/^(?:const|let|var)\s+(?:SIGN_VERSION|KW_GROUPS|SHARED)\b/m.test(read(f)), `${f}: ridefinisce una costante di shared.js`);
+const shared = vm.runInNewContext(read("shared.js") + "; SHARED");
+assert(shared.signVersion && Array.isArray(shared.keywordGroups) && shared.keywordGroups.every(g => g.length === 2 && /^\w+$/.test(g[0]) && g[1]), "shared.js: formato non valido");
+
 // l'insieme compila come un solo script: errori di sintassi o dichiarazioni doppie tra file si vedono qui
 const all = files.map(f => read(f)).join("\n");
 new vm.Script(all, {filename: "app.js"});
