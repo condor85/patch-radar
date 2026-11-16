@@ -82,7 +82,18 @@ function renderNav() {
  if (tn) { const t = document.createElement("span"); t.className = "newtxt"; t.textContent = String(tn); hb.append(t); }
  hb.addEventListener("click", goHome);
  list.append(hb);
- for (const k of visibleKeys()) {
+ // con molti giochi la barra mostra solo Home, «Giochi», il gioco aperto e quello con più novità; gli altri stanno nel pannello (js/games-panel.js)
+ const rows = sortGameRows(gameRows(), "new"), keys = barGameKeys(rows, selected, home);
+ if (rows.length > BAR_ALL_MAX) {
+  const gb = document.createElement("button"); gb.type = "button"; gb.className = "game gamesbtn";
+  gb.append(document.createTextNode("☰ Giochi"));
+  const c = document.createElement("span"); c.className = "gcount"; c.textContent = String(rows.length); gb.append(c);
+  const hiddenNew = rows.filter(r => !keys.includes(r.key)).reduce((s, r) => s + r.news, 0);
+  if (hiddenNew) { const t = document.createElement("span"); t.className = "newtxt"; t.textContent = "+" + hiddenNew; t.title = plural(hiddenNew) + " negli altri giochi"; gb.append(t); }
+  gb.addEventListener("click", openGamesPanel);
+  list.append(gb);
+ }
+ for (const k of keys) {
   const n = newItems(k).length;
   const b = document.createElement("button"); b.type = "button";
   b.className = "game" + (k === selected && !home ? " active" : "") + (n ? " has-new" : "");

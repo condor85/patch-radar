@@ -35,6 +35,8 @@ jobs:
         run: node tests/worker.test.mjs
       - name: Ritmo delle patch
         run: node tests/cadence.test.js
+      - name: Elenco dei giochi
+        run: node tests/games-panel.test.js
       - name: Sincronizzazione
         run: node tests/sync-client.test.mjs
       - name: Condivisione da Steam

@@ -28,6 +28,7 @@ Idee per Game Patch Radar, in ordine di priorità.
 - [x] Numero di versione in alto accanto al nome e finestra «Novità dell'app» con il registro delle modifiche (`js/changelog.js`; dal 15 nov 2026 ogni modifica visibile aggiunge una voce e alza la versione)
 - [x] Rafforzamento di sicurezza e robustezza (15 nov 2026): dati illeggibili che non vengono più azzerati, scritture atomiche, verifica delle firme anche offline, azioni GitHub fissate a un commit, Gemini con risposte strutturate, versione dell'app generata a ogni pubblicazione (`SECURITY.md`)
 - [x] `index.html` spezzato in file `js/*.js` (caricati in ordine da `index.html`; il test `tests/structure.test.js` ne controlla l'elenco) e costanti comuni in `shared.js` (`KW_GROUPS`, `SIGN_VERSION`, lette anche da Python e dal service worker)
+- [x] Elenco giochi senza scorrimento laterale (16 nov 2026): con più di 5 giochi la barra mostra Home, «Giochi», il gioco aperto e quello con più novità; il pulsante apre una griglia con ricerca e ordinamento (`js/games-panel.js`)
 
 ## Idee da fare (proposte il 15 nov 2026)
 - [ ] Rientro in gioco: per ogni gioco imposti «non gioco da…» e vedi un solo riassunto di cosa è cambiato (finestre di 30 e 90 giorni), generato da Gemini nell'Action

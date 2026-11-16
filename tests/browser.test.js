@@ -15,7 +15,7 @@ const axeSource = fs.readFileSync(require.resolve("axe-core/axe.min.js"), "utf8"
 const H = 3600, DAY = 86400;
 
 /* ---------- Dati finti: tre giochi, patch e annunci, con date relative a «adesso» ---------- */
-function fixture(now, {ageHours = 1} = {}) {
+function fixture(now, {ageHours = 1, extraGames = 0} = {}) {
   const item = (gid, title, ageDays, extra = {}) => ({
     gid: String(gid), title, url: "https://store.steampowered.com/news/app/1/view/" + gid, date: now - ageDays * DAY, feedlabel: "Community Announcements",
     feedname: "steam_community_announcements", author: "Dev", tags: ["patchnotes"], patch: true, labels: ["bug"],
@@ -32,6 +32,7 @@ function fixture(now, {ageHours = 1} = {}) {
       item(base + 4, "Festa d'autunno: eventi e sconti", 12, {patch: false, tags: [], labels: [], contents: "Vieni a festeggiare con noi questo weekend con eventi speciali e sconti su tutto il catalogo."}),
     ]});
   const games = [game(892970, "Valheim", 100, 1), game(1203620, "Enshrouded", 200, 2), game(3321460, "Crimson Desert", 300, 3)];
+  for (let i = 1; i <= extraGames; i++) games.push(game(4000000 + i, "Gioco " + i, 1000 + i * 10, 4));   // gid 10i1…10i4
   const old = now - ageHours * H;
   return {
     news: {updated: old, digest_ts: old, games},
@@ -325,6 +326,43 @@ test("accessibilità (axe): impostazioni con le notifiche attive (interruttori, 
   assert.deepEqual(found, [], "problemi di accessibilità:\n  " + found.join("\n  "));
   assert.deepEqual(log.errors.filter(e => !/ERR_FAILED|blocked/i.test(e)), []);
   await context.close();
+});
+
+test("molti giochi: la barra resta corta e il pannello «Giochi» li elenca, con ricerca e ordinamento", async ({browser, base, state}) => {
+  state.fixture = fixture(NOW, {extraGames: 5});   // 8 giochi in tutto
+  try {
+    // «Gioco 2», «Gioco 4» e «Gioco 5» hanno 2 novità ciascuno (hai già visto solo le due patch più vecchie)
+    const seen = JSON.stringify({seen: {4000002: ["1023", "1024"], 4000004: ["1043", "1044"], 4000005: ["1053", "1054"]}, lastVisit: (NOW - DAY) * 1000});
+    const {context, page, log} = await openApp(browser, base, {storage: {game_patch_radar_seen_v1: seen}});
+    const bar = () => page.locator("#gameList .game").evaluateAll(a => a.map(b => b.textContent.replace(/\s+/g, " ").trim()));
+    let b = await bar();
+    assert.equal(b.length, 3, "Home, «Giochi» e un gioco con novità: " + JSON.stringify(b));
+    assert(b[0].startsWith("🏠 Home") && b[1].startsWith("☰ Giochi") && b[2].startsWith("Gioco 2"), JSON.stringify(b));
+    assert(b[1].includes("+4"), "il pulsante segnala le novità dei giochi che non stanno nella barra: " + b[1]);
+    await page.locator("#gameList .gamesbtn").click();
+    await page.waitForSelector("#gamesPanel.open");
+    assert.equal(await page.locator("#gpGrid .gp-item").count(), 8);
+    assert.equal(await page.locator("#gpGrid .gp-item").first().textContent().then(t => t.startsWith("Gioco 2")), true, "con «Novità» chi ha aggiornamenti non letti sta in cima");
+    await page.fill("#gpQ", "gioco 3");
+    assert.equal(await page.locator("#gpGrid .gp-item").count(), 1);
+    await page.fill("#gpQ", "zzz");
+    assert.match(await page.locator("#gpGrid .empty").textContent(), /zzz/);
+    await page.fill("#gpQ", "");
+    await page.locator("#gamesPanel .gp-sort .abtn", {hasText: "A–Z"}).click();
+    assert.equal(await page.locator("#gpGrid .gp-name").first().textContent(), "Crimson Desert");
+    assert.equal(await page.evaluate(() => localStorage.getItem("game_patch_radar_gamesort_v1")), "name");
+    const found = await axeViolations(page);
+    assert.deepEqual(found, [], "problemi di accessibilità:\n  " + found.join("\n  "));
+    await page.locator("#gpGrid .gp-item", {hasText: "Gioco 3"}).click();
+    await page.waitForFunction(() => document.getElementById("gameTitle").textContent === "Gioco 3");
+    assert.equal(await page.locator("#gamesPanel.open").count(), 0, "scegliendo un gioco il pannello si chiude");
+    assert((await bar()).some(t => t.startsWith("Gioco 3")), "il gioco aperto compare nella barra");
+    await page.locator("#gameList .gamesbtn").click();
+    await page.waitForSelector("#gamesPanel.open");
+    await page.keyboard.press("Escape");
+    assert.equal(await page.locator("#gamesPanel.open").count(), 0, "Esc chiude il pannello");
+    noProblems(log); await context.close();
+  } finally { state.fixture = fixture(NOW); }
 });
 
 /* ---------- Esecuzione ---------- */
