@@ -269,6 +269,16 @@ const ACTIONS = {
     return {ok: true};
   },
 
+  /* «Aggiorna ora»: avvia subito l'aggiornamento delle patch (lo stesso del timer orario) e dice cosa risponde GitHub. */
+  async "/refresh"(env) {
+    try { await runUpdate(env, "manuale"); }
+    catch (e) {
+      if (!(e instanceof DispatchError)) throw e;
+      throw new HttpError(502, e.status === 403 || e.status === 404 ? "GitHub ha rifiutato l'avvio (" + e.status + "): al token del ponte manca il permesso «Actions: Read and write»." : e.status ? "GitHub ha risposto " + e.status + ": l'aggiornamento non è partito." : "GitHub non ha risposto: riprova tra poco.");
+    }
+    return {ok: true};
+  },
+
   /* Stato del ponte: raggiungibile, token GitHub valido e quando scade (l'intestazione c'è solo per i token fine-grained). */
   async "/status"(env) {
     const r = await gh(env, "");
@@ -279,6 +289,8 @@ const ACTIONS = {
     if (Number.isFinite(t)) { out.expires = new Date(t).toISOString(); out.daysLeft = Math.floor((t - Date.now()) / 86400000); }
     try { out.canPush = !!(await r.json()).permissions?.push; } catch { out.canPush = null; }
     if (out.canPush === false) { out.ok = false; out.error = "Il token GitHub non può scrivere sul repository."; }
+    const timer = await readTimer(env);
+    if (timer !== undefined) out.timer = timer;   // null = il timer non è ancora mai partito
     return out;
   },
 
@@ -492,6 +504,11 @@ export class Team {
       await st.delete("fails");
       return {ok: true, code: showCode(code)};
     }
+    if (m.op === "timer_set") {   // esito dell'ultimo avvio del timer orario: chiamato solo dal ponte
+      await st.put("timer", {at: Date.now(), ok: m.ok === true, status: Number.isInteger(m.status) ? m.status : 0, source: m.source === "manuale" ? "manuale" : "timer"});
+      return {ok: true};
+    }
+    if (m.op === "timer_get") return {ok: true, timer: (await st.get("timer")) || null};
     if (m.op === "rl") {   // limitatore delle password dell'amministratore: chiamato solo dal ponte
       return {ok: true, ...(await this.counter("adminfails", String(m.ip), m.action, FAIL_LIMIT, FAIL_WINDOW * 1000))};
     }
@@ -651,24 +668,42 @@ async function syncCall(env, op, request, body) {
    Il timer di GitHub resta come ripiego: se partono entrambi, il gruppo «concurrency» del workflow li mette in coda e il secondo non fa danni.
    Se il token non ha il permesso «Actions: Read and write», GitHub risponde 403/404: l'errore resta nel registro di Cloudflare
    (solo il codice di risposta, mai il token) e il timer di GitHub continua a funzionare come prima. */
+class DispatchError extends Error {
+  constructor(message, status) { super(message); this.status = status; }
+}
 async function dispatchUpdate(env) {
-  if (!env.GITHUB_TOKEN || !env.REPO) throw new Error("Timer orario: il ponte non è configurato (mancano GITHUB_TOKEN o REPO).");
+  if (!env.GITHUB_TOKEN || !env.REPO) throw new DispatchError("Timer orario: il ponte non è configurato (mancano GITHUB_TOKEN o REPO).", 0);
   let r;
   try {
     r = await gh(env, "/actions/workflows/update.yml/dispatches", {method: "POST", body: JSON.stringify({ref: BRANCH})});
   } catch {
-    throw new Error("Timer orario: GitHub non ha risposto (rete o tempo scaduto).");
+    throw new DispatchError("Timer orario: GitHub non ha risposto (rete o tempo scaduto).", 0);
   }
   if (r.status !== 204) {
     const hint = r.status === 403 || r.status === 404 ? " Al token manca il permesso «Actions: Read and write» su questo repository." : "";
-    throw new Error("Timer orario: GitHub ha risposto " + r.status + " all'avvio dell'aggiornamento." + hint);
+    throw new DispatchError("Timer orario: GitHub ha risposto " + r.status + " all'avvio dell'aggiornamento." + hint, r.status);
   }
   return {dispatched: true};
 }
 
+/* L'ultimo esito del timer resta nell'archivio privato (istanza «timer»): lo mostra /status nel pannello dell'app, così si capisce
+   se il timer è partito e cosa ha risposto GitHub senza aprire i registri di Cloudflare. Solo ora, riuscito o no e codice di risposta. */
+const timerStore = env => env.TEAM ? env.TEAM.get(env.TEAM.idFromName("timer")) : null;
+async function recordTimer(env, ok, status, source) {
+  try { const st = timerStore(env); if (st) await st.fetch("https://timer.internal/", {method: "POST", body: JSON.stringify({op: "timer_set", ok, status, source})}); } catch {}
+}
+async function readTimer(env) {
+  try { const st = timerStore(env); if (!st) return undefined; return (await (await st.fetch("https://timer.internal/", {method: "POST", body: JSON.stringify({op: "timer_get"})})).json()).timer ?? null; }
+  catch { return undefined; }
+}
+async function runUpdate(env, source) {
+  try { const out = await dispatchUpdate(env); await recordTimer(env, true, 204, source); return out; }
+  catch (e) { await recordTimer(env, false, e instanceof DispatchError ? e.status : 0, source); throw e; }
+}
+
 export default {
   async scheduled(event, env) {
-    try { await dispatchUpdate(env); }
+    try { await runUpdate(env, "timer"); }
     catch (e) { console.error(e.message); throw e; }   // l'errore compare nei registri del ponte e nell'elenco dei timer falliti
   },
 

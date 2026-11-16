@@ -115,6 +115,15 @@ function describeBridge(d) {
  if (typeof d.daysLeft === "number" && d.daysLeft <= 14) return ["warn", "🟡 Ponte attivo, ma il token GitHub scade tra " + (d.daysLeft === 0 ? "meno di un giorno" : d.daysLeft + (d.daysLeft === 1 ? " giorno" : " giorni")) + ": creane uno nuovo e aggiornalo su Cloudflare."];
  return ["ok", "🟢 Ponte attivo" + (typeof d.daysLeft === "number" ? " · il token GitHub scade tra " + d.daysLeft + " giorni" : " · il token GitHub funziona") + "."];
 }
+/* Timer orario del ponte (avvia l'aggiornamento delle patch al posto del timer di GitHub, spesso in ritardo) */
+function describeTimer(t) {
+ if (t === undefined) return null;   // ponte senza archivio: niente da dire
+ if (t === null) return ["warn", "⏱ Timer orario: non è ancora mai partito (dovrebbe partire ogni ora al minuto 37). Premi «Aggiorna ora» per vedere cosa risponde GitHub."];
+ const hhmm = new Date(t.at).toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"});
+ if (!t.ok) return ["warn", "⏱ L'ultimo avvio (" + hhmm + ") è stato rifiutato da GitHub" + (t.status ? " (errore " + t.status + ")" : " (nessuna risposta)") + (t.status === 403 || t.status === 404 ? ": al token del ponte manca il permesso «Actions: Read and write»." : ".")];
+ if (t.source === "timer" && Date.now() - t.at > 150 * 60000) return ["warn", "⏱ Il timer orario non parte dalle " + hhmm + ": controlla in Cloudflare che il Cron Trigger «37 * * * *» sia attivo."];
+ return ["ok", "⏱ Timer orario: ultimo avvio riuscito alle " + hhmm + (t.source === "manuale" ? " (manuale)" : "") + "."];
+}
 const BRIDGE_CHECK_KEY = "game_patch_radar_bridgecheck_v1";
 /* Una volta al giorno, se hai già fatto l'accesso, controlla in silenzio il ponte e avvisa solo se serve */
 async function checkBridgeQuiet() {
@@ -144,10 +153,20 @@ async function renderBridgeAdmin() {
   box.append(h("p", {}, "Inserisci la password dell'amministratore per aggiungere o togliere giochi. Resta salvata solo su questo dispositivo."), inp, h("div", {class: "row"}, go));
   return;
  }
- const stat = h("p", {class: "bstat"}, "Controllo il ponte…");
- box.append(stat);
- bridge("/status").then(d => { const [lvl, text] = describeBridge(d); stat.className = "bstat " + (lvl === "ok" ? "okmsg" : lvl === "warn" ? "" : "errmsg"); if (lvl === "warn") stat.style.color = "var(--warn)"; stat.textContent = text; })
-  .catch(e => { stat.className = "bstat errmsg"; stat.textContent = "🔴 " + e.message; });
+ const stat = h("p", {class: "bstat"}, "Controllo il ponte…"), timerStat = h("p", {class: "bstat", role: "status"});
+ const paint = (el, lvl, text) => { el.className = "bstat " + (lvl === "ok" ? "okmsg" : lvl === "warn" ? "" : "errmsg"); el.style.color = lvl === "warn" ? "var(--warn)" : ""; el.textContent = text; };
+ const loadStatus = () => bridge("/status").then(d => {
+   paint(stat, ...describeBridge(d));
+   const t = describeTimer(d.timer); if (t) paint(timerStat, ...t); else timerStat.textContent = "";
+  }).catch(e => paint(stat, "err", "🔴 " + e.message));
+ const refreshBtn = h("button", {class: "abtn", type: "button", onclick: async () => {
+  refreshBtn.disabled = true;
+  try { await bridge("/refresh"); toast("✓ Aggiornamento avviato: i dati nuovi arrivano tra circa un minuto."); }
+  catch (e) { msgEl(box, e.message, false); }
+  refreshBtn.disabled = false; loadStatus();
+ }}, "▶ Aggiorna ora");
+ box.append(stat, timerStat, h("div", {class: "row"}, refreshBtn));
+ loadStatus();
  box.append(h("h4", {}, "Aggiungi un gioco"));
  const q = h("input", {type: "search", placeholder: "Nome del gioco o link Steam", autocomplete: "off", enterkeyhint: "search"});
  const res = h("div", {});

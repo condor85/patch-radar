@@ -706,6 +706,40 @@ test("timer: rete assente o ponte non configurato → errore chiaro, nessuna chi
 });
 
 
+test("timer: l'esito dell'ultimo avvio compare in /status (mai partito → null; riuscito; rifiutato con il codice)", async () => {
+  const env = teamEnv();
+  mockNet();
+  assert.equal((await call(env, "/status", {})).body.timer, null);   // non è ancora mai partito
+  mockDispatch(204); await worker.scheduled({}, env);
+  mockNet();
+  let t = (await call(env, "/status", {})).body.timer;
+  assert.deepEqual([t.ok, t.status, t.source, typeof t.at], [true, 204, "timer", "number"]);
+  mockDispatch(403); await quiet(async () => { await assert.rejects(worker.scheduled({}, env)); });
+  mockNet();
+  t = (await call(env, "/status", {})).body.timer;
+  assert.deepEqual([t.ok, t.status], [false, 403]);
+  assert.ok(!JSON.stringify(t).includes("ghp_finto"));
+  mockNet();
+  assert.ok(!("timer" in (await call(makeEnv(), "/status", {})).body));   // ponte senza archivio: nessun campo
+});
+
+test("/refresh: avvia subito l'aggiornamento, registra «manuale», spiega il 403 e vuole la password", async () => {
+  const env = teamEnv();
+  const calls = mockDispatch(204);
+  const ok = await call(env, "/refresh", {});
+  assert.equal(ok.status, 200); assert.equal(calls.length, 1); assert.equal(calls[0].url, DISPATCH);
+  mockNet();
+  assert.equal((await call(env, "/status", {})).body.timer.source, "manuale");
+  mockDispatch(403);
+  const no = await quiet(() => call(env, "/refresh", {}));
+  assert.equal(no.status, 502); assert.ok(/403/.test(no.body.error) && /Actions: Read and write/.test(no.body.error), no.body.error);
+  assert.ok(!JSON.stringify(no.body).includes("ghp_finto") && !JSON.stringify(no.body).includes("segreto-da-non-mostrare"));
+  const calls2 = mockDispatch(204);
+  assert.equal((await call(env, "/refresh", {}, {auth: "Bearer sbagliata-sbagliata"})).status, 401);
+  assert.equal(calls2.length, 0);
+});
+
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try { await fn(); console.log("ok   -", name); }

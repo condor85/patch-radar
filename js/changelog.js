@@ -4,6 +4,9 @@
    tests/changelog.test.js controlla che la prima voce e APP_VERSION coincidano e che il formato sia corretto.
    Tipi ammessi: nuovo, migliorato, sicurezza, corretto. */
 const CHANGELOG = [
+ {version: "1.2.1", date: "2026-11-16", changes: [
+  {type: "migliorato", text: "Pannello dell'amministratore: mostra se il timer orario del ponte è partito e cosa ha risposto GitHub, e ha il pulsante «Aggiorna ora» per avviare subito l'aggiornamento delle patch."},
+ ]},
  {version: "1.2.0", date: "2026-11-16", changes: [
   {type: "nuovo", text: "Esporta e importa i tuoi dati: in Impostazioni puoi salvare in un file i giochi nascosti, le patch lette, i salvati e le preferenze, e ritrovarli su un altro telefono o dopo una reinstallazione. L'importazione si unisce ai dati che hai già e chiede conferma."},
   {type: "nuovo", text: "Se i dati non si aggiornano da molte ore (Steam o il servizio dei riassunti hanno un problema), in alto compare un avviso che lo dice."},
