@@ -8,7 +8,7 @@ Il workflow pubblica il ponte, imposta le variabili e scrive `adminApi` in `conf
 |---|---|
 | `CLOUDFLARE_API_TOKEN` | Cloudflare → My Profile → API Tokens → Create Token → modello «Edit Cloudflare Workers» |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare → Workers & Pages (colonna destra) → Account ID |
-| `BRIDGE_GITHUB_TOKEN` | token GitHub fine-grained, solo `patch-radar`, Contents: Read and write |
+| `BRIDGE_GITHUB_TOKEN` | token GitHub fine-grained, solo `patch-radar`, Contents: Read and write + Actions: Read and write |
 | `ADMIN_PASSWORD` | una frase lunga (almeno 12 caratteri) |
 
 Prima volta: apri una volta *Workers & Pages* su Cloudflare e, se te lo chiede, scegli il nome del tuo sottodominio `workers.dev`.
@@ -23,7 +23,7 @@ Costo: zero (piano gratuito di Cloudflare). Tempo: circa 10 minuti, una volta so
 1. Apri <https://github.com/settings/personal-access-tokens/new>.
 2. Nome «patch-radar-ponte», scadenza di 1 anno.
 3. *Repository access* → *Only select repositories* → `patch-radar`.
-4. *Permissions* → *Repository permissions* → **Contents: Read and write** (nient'altro).
+4. *Permissions* → *Repository permissions* → **Contents: Read and write** e **Actions: Read and write** (nient'altro). Il secondo serve solo al timer orario (vedi «Timer orario» più sotto).
 5. Genera il token e **tienilo da parte** (lo incollerai al punto 3).
 
 ## 2. Crea il ponte su Cloudflare
@@ -74,3 +74,11 @@ Con la stessa classe `Team` il ponte tiene un archivio privato **per ogni codice
 
 ## Test
 `node tests/worker.test.mjs` (ponte) e `node tests/sync-client.test.mjs` (sincronizzazione lato app contro il ponte)
+
+## Timer orario (aggiornamento puntuale)
+Il timer di GitHub Actions è poco affidabile: nei momenti di carico parte con 4-8 ore di ritardo o salta, e l'app mostra l'avviso «Il controllo automatico delle novità non parte da N ore».
+Il ponte ha quindi un proprio timer (Cloudflare Cron Trigger, ogni ora al minuto 37, dichiarato in `wrangler.toml`) che avvia il workflow «Aggiorna patch». Il timer di GitHub resta come ripiego: se partono entrambi, il workflow li mette in coda.
+- **Serve** il permesso *Actions: Read and write* sul token GitHub del ponte. Per aggiungerlo a un token esistente: <https://github.com/settings/personal-access-tokens> → il token → *Edit* → *Repository permissions* → *Actions* → *Read and write* → *Update*. Il token resta lo stesso: non serve cambiare il secret.
+- **Se il permesso manca**, il timer fallisce senza danni (GitHub risponde 403/404) e tutto continua a funzionare come prima, solo senza il vantaggio. Il motivo si legge in Cloudflare → *Workers & Pages* → `patch-radar-admin` → *Logs*.
+- **Se pubblichi il ponte dal pannello web** invece che con il workflow «Installa ponte Cloudflare», il timer non viene creato da solo: *Settings* → *Trigger Events* → *Cron Triggers* → aggiungi `37 * * * *`.
+- **Per provarlo subito**: in Cloudflare, *Settings* → *Trigger Events* → *Cron Triggers* → *Test*; poi controlla in GitHub → Actions che compaia un'esecuzione «Aggiorna patch» di tipo `workflow_dispatch`.

@@ -6,7 +6,8 @@ name: Installa ponte Cloudflare
 # Secret richiesti (Settings → Secrets and variables → Actions):
 #   CLOUDFLARE_API_TOKEN  token Cloudflare col modello «Edit Cloudflare Workers»
 #   CLOUDFLARE_ACCOUNT_ID ID dell'account Cloudflare
-#   BRIDGE_GITHUB_TOKEN   token GitHub fine-grained, solo questo repository, Contents: Read and write
+#   BRIDGE_GITHUB_TOKEN   token GitHub fine-grained, solo questo repository, Contents: Read and write e Actions: Read and write
+#                         (Actions serve al timer orario del ponte, che avvia l'aggiornamento delle patch al posto del timer di GitHub, spesso in ritardo)
 #   ADMIN_PASSWORD        password lunga (almeno 12 caratteri) da usare nell'app
 
 on:

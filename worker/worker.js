@@ -5,7 +5,8 @@
 
    Variabili da configurare (vedi worker/README.md):
      ADMIN_PASSWORD  (secret)  password dell'amministratore, almeno 12 caratteri
-     GITHUB_TOKEN    (secret)  token fine-grained con «Contents: Read and write» solo su questo repository
+     GITHUB_TOKEN    (secret)  token fine-grained solo su questo repository, con «Contents: Read and write» e «Actions: Read and write»
+                     (il secondo serve solo al timer orario, vedi scheduled() in fondo)
      REPO            (var)     es. condor85/patch-radar
      ALLOWED_ORIGIN  (var)     es. https://condor85.github.io   (solo origine, senza percorso)
      RL              (KV, facoltativo) tiene il conto dei tentativi di accesso sbagliati
@@ -645,7 +646,32 @@ async function syncCall(env, op, request, body) {
   return {status: r.status, body: d};
 }
 
+/* Timer orario: avvia l'aggiornamento delle patch (workflow update.yml).
+   Il timer di GitHub Actions arriva spesso con 4-8 ore di ritardo (o salta del tutto) nei momenti di carico; quello di Cloudflare è puntuale.
+   Il timer di GitHub resta come ripiego: se partono entrambi, il gruppo «concurrency» del workflow li mette in coda e il secondo non fa danni.
+   Se il token non ha il permesso «Actions: Read and write», GitHub risponde 403/404: l'errore resta nel registro di Cloudflare
+   (solo il codice di risposta, mai il token) e il timer di GitHub continua a funzionare come prima. */
+async function dispatchUpdate(env) {
+  if (!env.GITHUB_TOKEN || !env.REPO) throw new Error("Timer orario: il ponte non è configurato (mancano GITHUB_TOKEN o REPO).");
+  let r;
+  try {
+    r = await gh(env, "/actions/workflows/update.yml/dispatches", {method: "POST", body: JSON.stringify({ref: BRANCH})});
+  } catch {
+    throw new Error("Timer orario: GitHub non ha risposto (rete o tempo scaduto).");
+  }
+  if (r.status !== 204) {
+    const hint = r.status === 403 || r.status === 404 ? " Al token manca il permesso «Actions: Read and write» su questo repository." : "";
+    throw new Error("Timer orario: GitHub ha risposto " + r.status + " all'avvio dell'aggiornamento." + hint);
+  }
+  return {dispatched: true};
+}
+
 export default {
+  async scheduled(event, env) {
+    try { await dispatchUpdate(env); }
+    catch (e) { console.error(e.message); throw e; }   // l'errore compare nei registri del ponte e nell'elenco dei timer falliti
+  },
+
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
     try {

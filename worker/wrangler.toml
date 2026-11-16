@@ -21,3 +21,8 @@ class_name = "Team"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Team"]
+
+# Timer orario che avvia l'aggiornamento delle patch: quello di GitHub Actions arriva con 4-8 ore di ritardo.
+# Minuto 37, per non sovrapporsi al timer di GitHub (minuto 7). Serve «Actions: Read and write» sul token GitHub del ponte.
+[triggers]
+crons = ["37 * * * *"]

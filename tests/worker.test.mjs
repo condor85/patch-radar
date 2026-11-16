@@ -661,6 +661,51 @@ test("sync: senza l'archivio TEAM → 503; l'archivio non usato per 6 mesi si ca
 });
 
 
+/* ---------- timer orario: avvia l'aggiornamento su GitHub ---------- */
+const DISPATCH = "https://api.github.com/repos/condor85/patch-radar/actions/workflows/update.yml/dispatches";
+function mockDispatch(status = 204) {
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => { calls.push({url: String(url), init}); return new Response(status === 204 ? null : "{\"message\":\"segreto-da-non-mostrare\"}", {status}); };
+  return calls;
+}
+const quiet = async fn => { const old = console.error; console.error = () => {}; try { return await fn(); } finally { console.error = old; } };
+
+test("timer: avvia update.yml sul ramo main con il token del ponte", async () => {
+  const calls = mockDispatch(204);
+  await worker.scheduled({cron: "37 * * * *"}, makeEnv());
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, DISPATCH);
+  assert.equal(calls[0].init.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].init.body), {ref: "main"});
+  assert.equal(calls[0].init.headers.Authorization, "Bearer ghp_finto");
+});
+
+test("timer: se GitHub rifiuta (token senza «Actions») l'errore dice cosa manca e non mostra il token né la risposta", async () => {
+  for (const status of [403, 404]) {
+    mockDispatch(status);
+    await quiet(async () => {
+      await assert.rejects(worker.scheduled({}, makeEnv()), e => {
+        assert.ok(e.message.includes(String(status)) && e.message.includes("Actions: Read and write"), e.message);
+        assert.ok(!e.message.includes("ghp_finto") && !e.message.includes("segreto-da-non-mostrare"));
+        return true;
+      });
+    });
+  }
+  mockDispatch(500);
+  await quiet(async () => { await assert.rejects(worker.scheduled({}, makeEnv()), /500/); });
+});
+
+test("timer: rete assente o ponte non configurato → errore chiaro, nessuna chiamata inutile", async () => {
+  globalThis.fetch = async () => { throw new Error("ghp_finto in chiaro"); };
+  await quiet(async () => {
+    await assert.rejects(worker.scheduled({}, makeEnv()), e => { assert.ok(!e.message.includes("ghp_finto")); return /non ha risposto/.test(e.message); });
+  });
+  const calls = mockDispatch(204);
+  await quiet(async () => { await assert.rejects(worker.scheduled({}, makeEnv({GITHUB_TOKEN: ""})), /non è configurato/); });
+  assert.equal(calls.length, 0);
+});
+
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try { await fn(); console.log("ok   -", name); }
