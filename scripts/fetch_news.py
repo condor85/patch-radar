@@ -354,6 +354,53 @@ class RateLimited(Exception):
     pass
 
 
+# Contatori dell'esecuzione in corso: finiscono nel riepilogo di GitHub Actions (vedi write_summary), così per capire
+# perché un riassunto manca non serve leggere i log.
+STATS = {}
+
+
+def reset_stats():
+    STATS.clear()
+    STATS.update({"started": time.monotonic(), "games": 0, "games_ok": 0, "games_failed": [], "new_items": 0,
+                  "summaries_ai": 0, "summaries_simple": 0, "summaries_failed": 0,
+                  "translations_ok": 0, "translations_failed": 0, "models": [], "quota": False, "changed": False})
+
+
+def stat_add(key, n=1):
+    STATS[key] = STATS.get(key, 0) + n
+
+
+def stat_model(model):
+    if model not in STATS.setdefault("models", []):
+        STATS["models"].append(model)
+
+
+def write_summary(path=None):
+    """Scrive il riepilogo dell'esecuzione in $GITHUB_STEP_SUMMARY (Markdown). Non deve mai far fallire l'aggiornamento."""
+    path = path or os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path or not STATS:
+        return
+    secs = max(0, round(time.monotonic() - STATS.get("started", time.monotonic())))
+    failed = STATS.get("games_failed") or []
+    yes = lambda b: "sì" if b else "no"  # noqa: E731
+    rows = [
+        ("Giochi controllati", f"{STATS.get('games_ok', 0)} su {STATS.get('games', 0)}" + (f" (non letti: {', '.join(failed)})" if failed else "")),
+        ("Annunci nuovi", STATS.get("new_items", 0)),
+        ("Riassunti", f"{STATS.get('summaries_ai', 0)} con Gemini, {STATS.get('summaries_simple', 0)} semplici, {STATS.get('summaries_failed', 0)} falliti"),
+        ("Traduzioni", f"{STATS.get('translations_ok', 0)} riuscite, {STATS.get('translations_failed', 0)} fallite"),
+        ("Modello Gemini", ", ".join(STATS.get("models") or []) or ("non usato" if GEMINI_KEY else "chiave non impostata")),
+        ("Quota Gemini esaurita", yes(STATS.get("quota"))),
+        ("Dati cambiati", yes(STATS.get("changed"))),
+        ("Durata", f"{secs} s"),
+    ]
+    text = "## Aggiornamento patch\n\n| Voce | Valore |\n| --- | --- |\n" + "".join(f"| {k} | {v} |\n" for k, v in rows)
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(text)
+    except OSError as e:
+        print(f"  riepilogo non scritto: {e}", file=sys.stderr)
+
+
 def gemini_call(system, user, max_tokens=2000, timeout=120, schema=None, schema_note=""):
     """Una richiesta a Gemini (piano gratuito). Prova i modelli in ordine; alza RateLimited se la quota è finita.
 
@@ -380,11 +427,13 @@ def gemini_call(system, user, max_tokens=2000, timeout=120, schema=None, schema_
             try:
                 text = post(model, with_schema)
                 if text:
+                    stat_model(model)
                     return text
                 errors.append(f"{model}: risposta vuota")
             except urllib.error.HTTPError as e:
                 msg = e.read()[:400].decode("utf-8", "replace")
                 if e.code == 429:
+                    STATS["quota"] = True
                     raise RateLimited(msg)
                 if e.code == 400 and with_schema:
                     errors.append(f"{model}: modalità JSON non accettata, riprovo senza")
@@ -545,9 +594,11 @@ def add_summaries(games, old):
                 except RateLimited as e:
                     print(f"  limite di richieste Gemini raggiunto, riprovo alla prossima esecuzione ({str(e)[:300]})", file=sys.stderr)
                     use_ai = False
+                    stat_add("summaries_failed")
                 except Exception as e:  # noqa
                     print(f"  riassunto Gemini non disponibile ({str(e)[:700]})", file=sys.stderr)
                     use_ai = False
+                    stat_add("summaries_failed")
             if not text and not it.get("summary"):
                 try:
                     text, src = extractive_summary(it), "simple"
@@ -557,6 +608,7 @@ def add_summaries(games, old):
             if text:
                 budget -= 1
                 it["summary"], it["summary_src"] = text, src
+                stat_add("summaries_ai" if src == "ai" else "summaries_simple")
 
 
 PATCH_RE = re.compile(r"patch|hotfix|hot fix|update|changelog|release notes|\bfix(es)?\b|\bv?\d+\.\d+|\bbuild \d+", re.I)
@@ -594,6 +646,7 @@ def add_translations(games):
                 return
             except Exception as e:  # noqa
                 print(f"  traduzione Gemini non riuscita ({str(e)[:200]})", file=sys.stderr)
+                stat_add("translations_failed")
                 f = it.get("it_fail") or {}
                 it["it_fail"] = {"n": f.get("n", 0) + 1, "ts": int(time.time())}
                 budget -= 1
@@ -602,6 +655,7 @@ def add_translations(games):
             budget -= 1
             it["it"] = tr
             it.pop("it_fail", None)
+            stat_add("translations_ok")
 
 
 OUTBOX_ITEMS = []   # notifiche del controllo in corso, scritte in outbox.json a dati salvati
@@ -768,6 +822,7 @@ def main():
         print(f"::error file={OUT}::{OUT} non ha il formato atteso (serve un oggetto JSON). Non lo sovrascrivo.")
         sys.exit(1)
     now = int(time.time())
+    reset_stats()
     pg = prev.get("games")
     old = {str(g["appid"]): g for g in pg if isinstance(g, dict)} if isinstance(pg, list) else {}
     games, ok = [], 0
@@ -777,6 +832,7 @@ def main():
         # comando di GitHub Actions: l'errore compare ben visibile nell'esecuzione (utile se games.json si modifica da telefono)
         print(f"::error file=games.json::games.json non valido: {e}")
         sys.exit(1)
+    STATS["games"] = len(wanted)
     for g in wanted:
         key = str(g["appid"])
         o = old.get(key, {})
@@ -793,9 +849,11 @@ def main():
         try:
             items = merge_history(fetch_game(g["appid"]), o.get("items", []))
             ok += 1
+            STATS["games_ok"] = ok
             print(f"{name}: {len(items)} annunci")
         except Exception as e:  # noqa
             print(f"{name}: ERRORE {e} (tengo i dati precedenti)", file=sys.stderr)
+            STATS["games_failed"].append(name)
             items = o.get("items", [])
         classify(items)
         entry = {"appid": g["appid"], "name": name, "image": image, "price": price, "items": items}
@@ -824,6 +882,7 @@ def main():
                 notify_facts(g["name"], g["appid"], title, msg)
         known = {str(i["gid"]) for i in o["items"]}
         fresh = [i for i in g["items"] if str(i["gid"]) not in known]
+        stat_add("new_items", len(fresh))
         for it in fresh[:5]:
             print(f"NUOVO {g['name']}: {it.get('title')} ({'patch' if it.get('patch') else 'annuncio'})")
             notify(g["name"], it, g["appid"], bool(g.get("watch")))
@@ -857,7 +916,9 @@ def main():
     if news_changed:
         write_json_atomic(OUT, {"updated": now, "ntfy_key": ntfy_key, "digest_ts": digest_ts, "games": games}, ensure_ascii=False, separators=(",", ":"))
     changed = news_changed or players_changed
+    STATS["changed"] = changed
     write_outbox()
+    write_summary()
     out = os.environ.get("GITHUB_OUTPUT")
     if out:
         with open(out, "a") as f:

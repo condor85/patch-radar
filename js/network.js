@@ -26,6 +26,21 @@ async function fetchJSON(target, valid, timeout = 10000, maxTries = ROUTES.lengt
 
 /* ---------- Dati dal server (GitHub Actions) ---------- */
 let snapshot = null;
+/* Quanto sono freschi i dati: news.json cambia solo quando c'è una novità, quindi da solo non dice se l'Action gira. Si guarda anche l'ora dei
+   giocatori online, che a controllo riuscito si rinnova almeno ogni 6 ore (PLAYERS_MAX_AGE in fetch_news.py). Se la più recente delle due è
+   molto vecchia, Steam, Gemini o l'Action hanno un problema. Ritorna millisecondi, 0 se non si sa. */
+const DATA_STALE_MS = 12 * 3600 * 1000;
+function dataFreshAt(d, now = Date.now()) {
+ let t = 0;
+ const take = v => { const n = Number(v) * 1000; if (Number.isFinite(n) && n > t && n <= now + 3600000) t = n; };
+ if (d) { take(d.updated); for (const g of d.games || []) if (g && g.players) take(g.players.ts); }
+ return t;
+}
+/* Ore di ritardo (intere) se i dati sono troppo vecchi, altrimenti 0 */
+function staleHours(freshAt, now = Date.now(), limit = DATA_STALE_MS) {
+ return freshAt > 0 && now - freshAt > limit ? Math.floor((now - freshAt) / 3600000) : 0;
+}
+let dataFresh = 0;
 async function loadSnapshot() {
  if (location.protocol === "file:") return null;
  try {
@@ -41,6 +56,7 @@ async function loadSnapshot() {
    const pm = pp && pp.ok ? (await pp.json()).games || {} : {};
    for (const g of d.games) { const m = (pm[String(g.appid)] || {}).min; g.pmin = m && Number.isFinite(m.c) ? {cents: m.c, final: String(m.f || ""), ts: m.ts || 0} : null; }
   } catch {}
+  dataFresh = dataFreshAt(d);
   return d;
  } catch { return null; }
 }

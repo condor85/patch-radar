@@ -111,8 +111,9 @@ $("bellBtn").addEventListener("click", async () => {
 });
 function setGameMajor(k, on) { return setPref({major: on ? [...new Set([...notifPref.major, k])] : notifPref.major.filter(x => x !== k)}); }
 function setGameNotif(k, on) { return setPref({off: on ? notifPref.off.filter(x => x !== k) : [...new Set([...notifPref.off, k])]}); }
-function switchEl(checked, onchange, disabled) {
- const i = h("input", {type: "checkbox"}); i.checked = checked; i.disabled = !!disabled; i.addEventListener("change", () => onchange(i.checked));
+function switchEl(checked, onchange, disabled, name) {
+ // il testo accanto all'interruttore sta fuori dall'etichetta: senza un nome un lettore di schermo direbbe solo «casella di controllo»
+ const i = h("input", {type: "checkbox", role: "switch", "aria-label": name || ""}); i.checked = checked; i.disabled = !!disabled; i.addEventListener("change", () => onchange(i.checked));
  return h("label", {class: "sw"}, i, h("i", {}));
 }
 function renderNotif() {
@@ -122,7 +123,7 @@ function renderNotif() {
   return;
  }
  const denied = Notification.permission === "denied";
- box.append(h("div", {class: "nrow big"}, h("span", {}, "Ricevi le notifiche sui nuovi aggiornamenti"), switchEl(notifPref.on && !denied, setMaster, false)));
+ box.append(h("div", {class: "nrow big"}, h("span", {}, "Ricevi le notifiche sui nuovi aggiornamenti"), switchEl(notifPref.on && !denied, setMaster, false, "Ricevi le notifiche sui nuovi aggiornamenti")));
  if (denied) box.append(h("p", {class: "nstat errmsg"}, "Le notifiche sono bloccate per questo sito: consentile dalle impostazioni del browser."));
  else if (!notifPref.on) box.append(h("p", {class: "v-note"}, "Attiva l'interruttore per essere avvisato anche quando l'app è chiusa."));
  else {
@@ -130,13 +131,13 @@ function renderNotif() {
   const seg = h("div", {class: "seg"});
   for (const [m, label] of [["now", "Subito"], ["digest", "Riepilogo serale"]]) seg.append(h("button", {type: "button", class: "abtn" + (notifPref.mode === m ? " on" : ""), onclick: () => notifPref.mode !== m && setPref({mode: m})}, label));
   box.append(seg, h("p", {class: "v-note"}, notifPref.mode === "digest" ? "Una sola notifica per gioco, verso le 18:00, con le patch uscite nella giornata." : "Una notifica appena esce una nuova patch."));
-  box.append(h("div", {class: "nrow"}, h("span", {}, "Includi anche annunci, eventi e novità del gioco (italiano, DLC…)"), switchEl(notifPref.news, on => setPref({news: on}))));
-  box.append(h("div", {class: "nrow"}, h("span", {}, "Avvisami quando un gioco va in saldo"), switchEl(notifPref.sale, on => setPref({sale: on}))));
-  box.append(h("div", {class: "nrow"}, h("span", {}, "Avvisami quando una patch grossa è stabile (48 ore senza hotfix)"), switchEl(notifPref.stable, on => setPref({stable: on}))));
+  box.append(h("div", {class: "nrow"}, h("span", {}, "Includi anche annunci, eventi e novità del gioco (italiano, DLC…)"), switchEl(notifPref.news, on => setPref({news: on}), false, "Includi anche annunci, eventi e novità del gioco")));
+  box.append(h("div", {class: "nrow"}, h("span", {}, "Avvisami quando un gioco va in saldo"), switchEl(notifPref.sale, on => setPref({sale: on}), false, "Avvisami quando un gioco va in saldo")));
+  box.append(h("div", {class: "nrow"}, h("span", {}, "Avvisami quando una patch grossa è stabile (48 ore senza hotfix)"), switchEl(notifPref.stable, on => setPref({stable: on}), false, "Avvisami quando una patch grossa è stabile")));
   const q = notifPref.quiet;
-  box.append(h("div", {class: "nrow"}, h("span", {}, "Ore silenziose (senza suono né vibrazione)"), switchEl(q.on, on => setPref({quiet: {...q, on}}, false))));
+  box.append(h("div", {class: "nrow"}, h("span", {}, "Ore silenziose (senza suono né vibrazione)"), switchEl(q.on, on => setPref({quiet: {...q, on}}, false), false, "Ore silenziose")));
   if (q.on) {
-   const time = (val, key) => { const i = h("input", {type: "time", class: "tin", value: val}); i.addEventListener("change", () => i.value && setPref({quiet: {...notifPref.quiet, [key]: i.value}}, false)); return i; };
+   const time = (val, key) => { const i = h("input", {type: "time", class: "tin", value: val, "aria-label": key === "from" ? "Ore silenziose: dalle" : "Ore silenziose: alle"}); i.addEventListener("change", () => i.value && setPref({quiet: {...notifPref.quiet, [key]: i.value}}, false)); return i; };
    box.append(h("div", {class: "nrow", style: "gap:8px"}, h("span", {style: "flex:0 0 auto"}, "Dalle"), time(q.from, "from"), h("span", {style: "flex:0 0 auto"}, "alle"), time(q.to, "to")));
   }
   box.append(h("p", {class: "v-note", style: "margin-top:12px"}, "Giochi da seguire:"));
@@ -144,7 +145,7 @@ function renderNotif() {
    const g = GAMES[k], following = !notifPref.off.includes(k), onlyMajor = notifPref.major.includes(k);
    const kind = !following ? null : g.watch ? h("span", {class: "tagw"}, "👁 solo grosse")
     : h("button", {type: "button", class: "abtn mini" + (onlyMajor ? " on" : ""), title: "Solo patch con contenuti nuovi o bilanciamento: niente hotfix e correzioni minori", onclick: () => setGameMajor(k, !onlyMajor)}, onlyMajor ? "Solo grosse" : "Tutte");
-   box.append(h("div", {class: "nrow"}, h("span", {}, g.name), kind, switchEl(following, on => setGameNotif(k, on))));
+   box.append(h("div", {class: "nrow"}, h("span", {}, g.name), kind, switchEl(following, on => setGameNotif(k, on), false, "Notifiche di " + g.name)));
   }
   box.append(h("p", {class: "v-note"}, "«Solo grosse»: patch con contenuti nuovi o cambi di bilanciamento, senza hotfix né correzioni minori. I giochi con 👁 mandano sempre solo quelle."));
   box.append(h("p", {class: "v-note", style: "margin-top:12px"}, "Avvisi per argomento:"));

@@ -122,8 +122,24 @@ async function gh(env, path, init = {}) {
   return r;
 }
 
-/* Legge un file JSON del repository, lo modifica con `mutate` e lo riscrive. Se nel frattempo il file è cambiato riprova. */
-async function editJson(env, path, mutate, message) {
+/* Chi ha fatto la modifica, per il registro dei commit. L'app ha una sola password, quindi «chi» è il dispositivo (browser e sistema).
+   Niente indirizzo IP né altri dati personali: il repository è pubblico. Solo parole di un elenco fisso, mai testo preso dalla richiesta. */
+function describeClient(request) {
+  const ua = (request && request.headers.get("User-Agent")) || "";
+  const os = /Android/i.test(ua) ? "Android" : /iPhone|iPad|iPod/i.test(ua) ? "iOS" : /Windows/i.test(ua) ? "Windows" : /Mac OS X|Macintosh/i.test(ua) ? "macOS" : /CrOS/.test(ua) ? "ChromeOS" : /Linux|X11/i.test(ua) ? "Linux" : "";
+  const browser = /\bEdgA?\/|\bEdg\//.test(ua) ? "Edge" : /\bOPR\/|Opera/.test(ua) ? "Opera" : /SamsungBrowser/.test(ua) ? "Samsung Internet" : /Firefox\/|FxiOS/.test(ua) ? "Firefox" : /Chrome\/|CriOS/.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "";
+  return browser || os ? (browser || "Browser") + (os ? " su " + os : "") : "dispositivo non riconosciuto";
+}
+
+/* Messaggio del commit: la prima riga dice cosa è cambiato; sotto, chi (dispositivo) e quando, leggibili nella cronologia del repository. */
+function commitMessage(what, who, now = new Date()) {
+  const subject = String(what).replace(/[\r\n]+/g, " ").trim().slice(0, 120) || "Modifica";
+  return "[app] " + subject + "\n\nChi: " + (who || "dispositivo non riconosciuto") + " (app Patch Radar, ponte Cloudflare)\nQuando: " + now.toISOString();
+}
+
+/* Legge un file JSON del repository, lo modifica con `mutate` e lo riscrive. Se nel frattempo il file è cambiato riprova.
+   `message` è il testo, o una funzione che lo compone dopo la modifica (per citare il nome del gioco); `who` descrive il dispositivo. */
+async function editJson(env, path, mutate, message, who) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const r = await gh(env, "/contents/" + path + "?ref=" + BRANCH);
     if (!r.ok) throw new HttpError(502, "Il ponte non riesce a leggere il repository: controlla il token GitHub.");
@@ -132,7 +148,7 @@ async function editJson(env, path, mutate, message) {
     try { current = JSON.parse(dec.decode(b64ToBytes(f.content))); } catch { throw new HttpError(502, "Il file " + path + " non è leggibile."); }
     const next = mutate(current);
     if (next === null) return {changed: false, data: current};
-    const w = await gh(env, "/contents/" + path, {method: "PUT", body: JSON.stringify({message: "[app] " + message, branch: BRANCH, sha: f.sha, content: bytesToB64(enc.encode(JSON.stringify(next, null, 2) + "\n"))})});
+    const w = await gh(env, "/contents/" + path, {method: "PUT", body: JSON.stringify({message: commitMessage(typeof message === "function" ? message() : message, who), branch: BRANCH, sha: f.sha, content: bytesToB64(enc.encode(JSON.stringify(next, null, 2) + "\n"))})});
     if (w.ok) return {changed: true, data: next};
     if (w.status !== 409 && w.status !== 422) throw new HttpError(502, "Il ponte non riesce a scrivere sul repository: controlla il token GitHub.");
   }
@@ -209,7 +225,7 @@ const ACTIONS = {
     return {results: await searchSteam(q)};
   },
 
-  async "/add"(env, body) {
+  async "/add"(env, body, {who} = {}) {
     const appid = parseAppId(body.appid);
     if (!appid) throw new HttpError(400, "Numero app Steam non valido.");
     const game = await steamGame(appid);
@@ -225,28 +241,29 @@ const ACTIONS = {
       if (list.some(x => Number(x.appid) === appid)) { duplicate = true; return null; }
       if (list.length >= MAX_GAMES) throw new HttpError(409, "Raggiunto il massimo di " + MAX_GAMES + " giochi: toglierne uno prima di aggiungerne altri.");
       return {...o, games: [...list, game]};
-    }, "Aggiungi " + game.name);
+    }, "Aggiungi " + game.name + " (" + appid + ")" + (game.watch ? " da osservare" + (game.target ? ", soglia " + game.target + " €" : "") : ""), who);
     return {ok: true, added: !duplicate, game, count: (r.data.games || []).length};
   },
 
   /* Cambia lo stato «da tenere d'occhio» e la soglia di prezzo di un gioco già presente. */
-  async "/watch"(env, body) {
+  async "/watch"(env, body, {who} = {}) {
     const appid = parseAppId(body.appid);
     if (!appid) throw new HttpError(400, "Numero app Steam non valido.");
     if (typeof body.watch !== "boolean") throw new HttpError(400, "Richiesta non valida.");
     const target = body.watch ? parseTarget(body.target) : null;
     if (target === undefined) throw new HttpError(400, "Prezzo non valido: scrivi un importo in euro, per esempio 19,99.");
-    let found = false;
+    let found = false, watchName = "";
     await editJson(env, "games.json", o => {
       const list = Array.isArray(o.games) ? o.games : [];
-      if (!list.some(x => Number(x.appid) === appid)) return null;
-      found = true;
+      const hit = list.find(x => Number(x.appid) === appid);
+      if (!hit) return null;
+      found = true; watchName = cleanName(hit.name);
       return {...o, games: list.map(x => {
         if (Number(x.appid) !== appid) return x;
         const {watch, target: _t, ...rest} = x;
         return body.watch ? {...rest, watch: true, target} : rest;
       })};
-    }, (body.watch ? "Osserva " : "Smetti di osservare ") + appid);
+    }, () => (body.watch ? "Osserva " : "Smetti di osservare ") + (watchName || appid) + " (" + appid + ")" + (body.watch && target ? ", soglia " + target + " €" : ""), who);
     if (!found) throw new HttpError(404, "Gioco non presente nell'app.");
     return {ok: true};
   },
@@ -264,24 +281,26 @@ const ACTIONS = {
     return out;
   },
 
-  async "/remove"(env, body) {
+  async "/remove"(env, body, {who} = {}) {
     const appid = parseAppId(body.appid);
     if (!appid) throw new HttpError(400, "Numero app Steam non valido.");
+    let removedName = "";
     await editJson(env, "games.json", o => {
       const list = Array.isArray(o.games) ? o.games : [];
       const hit = list.find(x => Number(x.appid) === appid);
       if (!hit) return null;
       if (list.length <= 1) throw new HttpError(409, "Deve restare almeno un gioco.");
+      removedName = cleanName(hit.name);
       return {...o, games: list.filter(x => Number(x.appid) !== appid)};
-    }, "Rimuovi " + appid);
+    }, () => "Rimuovi " + (removedName || appid) + " (" + appid + ")", who);
     return {ok: true};
   },
 
   /* Nuovo argomento per le notifiche (se qualcuno scrive messaggi falsi sul vecchio). */
-  async "/topic"(env) {
+  async "/topic"(env, body, {who} = {}) {
     const arr = new Uint8Array(6); crypto.getRandomValues(arr);
     const topic = "patch-radar-" + [...arr].map(b => b.toString(16).padStart(2, "0")).join("");
-    await editJson(env, "config.json", o => ({...o, ntfyTopic: topic}), "Nuovo argomento notifiche");
+    await editJson(env, "config.json", o => ({...o, ntfyTopic: topic}), "Nuovo argomento notifiche", who);
     return {ok: true, topic};
   }
 };
@@ -654,7 +673,7 @@ export default {
       if (!action) throw new HttpError(404, "Non trovato.");
       if (request.method !== "POST") throw new HttpError(405, "Metodo non consentito.");
       await authenticate(request, env);
-      return json(env, origin, 200, await action(env, await readBody(request)));
+      return json(env, origin, 200, await action(env, await readBody(request), {who: describeClient(request)}));
     } catch (e) {
       if (e instanceof HttpError) return json(env, origin, e.status, {error: e.message});
       return json(env, origin, 500, {error: "Errore del servizio. Riprova."});   // nessun dettaglio interno verso l'esterno

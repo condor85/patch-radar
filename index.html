@@ -21,6 +21,7 @@
 :root[data-theme="light"]{color-scheme:light;--bg:#f3f6fa;--bar:#f3f6fad9;--panel:#ffffff;--panel2:#eef2f7;--line:#d3dbe5;--muted:#5b6b7d;--text:#14202e;--accent:#0b6cb5;--green:#1a7a4c;--warn:#8a5a00;--btn-bg:#e6eef7;--btn-line:#b4c6da;--soft:#f0f4f9;--card2:#f7f9fc;--sel-bg:#dcebf9;--sel-line:#8fb4d8;--nav-text:#324559;--body-text:#2b3a4b;--rich-text:#1f2d3d;--sum-text:#17324d;--green-bg:#dff3e8;--green-line:#7fbf9f;--green-text:#14442c;--ban1:#e4f6ec;--ban2:#d5eedf;--new-bg:#e6f4ee;--new-line:#5aa585;--sum-bg:#e7f1fb;--sum-line:#b5cde4;--warn-bg:#fff4d6;--warn-line:#e0c36e;--err:#9a2b1b;--err-line:#e0a79f;--err-bg:#fde7e3;--tag-line:#9ab6d0;--tag-text:#1d5b8f;--dim:#5e6e80;--link:#1d5b8f;--dot:#8a9bad;--spin:#9fb0c2;--text-strong:#0b1b2b;--glow:#dbe9f7;--on-accent:#ffffff;}
 @media(prefers-color-scheme:light){:root:not([data-theme="dark"]){color-scheme:light;--bg:#f3f6fa;--bar:#f3f6fad9;--panel:#ffffff;--panel2:#eef2f7;--line:#d3dbe5;--muted:#5b6b7d;--text:#14202e;--accent:#0b6cb5;--green:#1a7a4c;--warn:#8a5a00;--btn-bg:#e6eef7;--btn-line:#b4c6da;--soft:#f0f4f9;--card2:#f7f9fc;--sel-bg:#dcebf9;--sel-line:#8fb4d8;--nav-text:#324559;--body-text:#2b3a4b;--rich-text:#1f2d3d;--sum-text:#17324d;--green-bg:#dff3e8;--green-line:#7fbf9f;--green-text:#14442c;--ban1:#e4f6ec;--ban2:#d5eedf;--new-bg:#e6f4ee;--new-line:#5aa585;--sum-bg:#e7f1fb;--sum-line:#b5cde4;--warn-bg:#fff4d6;--warn-line:#e0c36e;--err:#9a2b1b;--err-line:#e0a79f;--err-bg:#fde7e3;--tag-line:#9ab6d0;--tag-text:#1d5b8f;--dim:#5e6e80;--link:#1d5b8f;--dot:#8a9bad;--spin:#9fb0c2;--text-strong:#0b1b2b;--glow:#dbe9f7;--on-accent:#ffffff;}}
 html{overscroll-behavior-y:contain}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 *{box-sizing:border-box}
 body{margin:0;background:radial-gradient(ellipse at 20% 0%,var(--glow) 0,transparent 42%),var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;min-height:100vh}
 button{font:inherit;cursor:pointer}
@@ -203,6 +204,7 @@ main{max-width:880px;margin:0 auto;padding:12px}
 /* ---------- Aspetto semplificato (v3) ---------- */
 body{font-size:15.5px;line-height:1.5}
 button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.v-body:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
 .abtn{min-height:38px;padding:8px 13px;border-radius:11px}
 .abtn.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:750}
 .abtn.sq{min-width:40px;padding:8px 0;font-size:16px;line-height:1;text-align:center}
@@ -249,8 +251,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
   <div class="filters" id="filters" aria-label="Filtri"></div>
   <div class="searchbar" id="searchbar" hidden><input type="search" id="q" placeholder="Cerca nelle patch (es. spada, nerf)…" autocomplete="off" enterkeyhint="search" aria-label="Cerca nelle patch"><button class="abtn" id="qClear" type="button" aria-label="Cancella la ricerca">✕</button></div>
   <div class="banner" id="banner" hidden></div>
-  <div class="alert" id="stale" hidden></div>
-  <div class="status" id="status"><span class="spinner"></span>Sto recuperando le ultime note…</div>
+  <div class="alert" id="stale" role="status" aria-live="polite" hidden></div>
+  <div class="status" id="status" role="status" aria-live="polite"><span class="spinner"></span>Sto recuperando le ultime note…</div>
   <div class="cards" id="cards"></div>
  </section>
 </main>
@@ -262,7 +264,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
 
 <div class="viewer" id="manager" role="dialog" aria-modal="true" aria-label="Scegli i giochi">
  <div class="v-bar"><button class="abtn" id="mClose" type="button">✕ Chiudi</button></div>
- <div class="v-body"><div class="v-inner">
+ <div class="v-body" tabindex="0"><div class="v-inner">
   <h2>Giochi da mostrare</h2>
   <div class="v-note" style="margin:0 0 10px">La scelta vale solo su questo dispositivo. L'elenco dei giochi disponibili lo gestisce il proprietario dell'app.</div>
   <div id="mList"></div>
@@ -273,6 +275,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
   <div class="row-btns" id="fontRow" aria-label="Dimensione del testo"></div>
   <h3 class="sec">🔄 Sincronizza tra dispositivi</h3>
   <div class="adm" id="syncBox"></div>
+  <h3 class="sec">💾 Esporta e importa i tuoi dati</h3>
+  <div class="adm" id="backupBox"></div>
   <h3 class="sec">👥 Condividi l'app</h3>
   <div class="row-btns"><button class="abtn" id="inviteBtn" type="button">Invita un amico</button><button class="abtn" id="guideBtn" type="button">❓ Guida di benvenuto</button></div>
   <details class="admin" id="adminDet"><summary>🔧 Amministratore</summary><div class="adm" id="adminBox"></div></details>
@@ -280,22 +284,22 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
 </div>
 <div class="viewer" id="recap" role="dialog" aria-modal="true" aria-label="Riepilogo delle novità">
  <div class="v-bar"><button class="abtn" id="rClose" type="button">✕ Chiudi</button></div>
- <div class="v-body"><div class="v-inner" id="recapBody"></div></div>
+ <div class="v-body" tabindex="0"><div class="v-inner" id="recapBody"></div></div>
 </div>
 <div class="viewer" id="changelog" role="dialog" aria-modal="true" aria-label="Novità dell'app">
  <div class="v-bar"><button class="abtn" id="clClose" type="button">✕ Chiudi</button></div>
- <div class="v-body"><div class="v-inner" id="changelogBody"></div></div>
+ <div class="v-body" tabindex="0"><div class="v-inner" id="changelogBody"></div></div>
 </div>
 <div class="viewer" id="welcome" role="dialog" aria-modal="true" aria-label="Benvenuto">
- <div class="v-body"><div class="v-inner" id="welcomeBody"></div></div>
+ <div class="v-body" tabindex="0"><div class="v-inner" id="welcomeBody"></div></div>
 </div>
 <div class="viewer" id="team" role="dialog" aria-modal="true" aria-label="Squadra">
  <div class="v-bar"><button class="abtn" id="tClose" type="button">✕ Chiudi</button></div>
- <div class="v-body"><div class="v-inner" id="teamBody"></div></div>
+ <div class="v-body" tabindex="0"><div class="v-inner" id="teamBody"></div></div>
 </div>
 <div class="viewer" id="invite" role="dialog" aria-modal="true" aria-label="Invita un amico">
  <div class="v-bar"><button class="abtn" id="iClose" type="button">✕ Chiudi</button></div>
- <div class="v-body"><div class="v-inner center" id="inviteBody"></div></div>
+ <div class="v-body" tabindex="0"><div class="v-inner center" id="inviteBody"></div></div>
 </div>
 <div class="ptr" id="ptr">↓ Trascina per aggiornare</div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -304,33 +308,34 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
   <button class="ibtn" id="vClose" type="button" aria-label="Chiudi" title="Chiudi">✕</button>
   <button class="abtn" id="vTr" type="button">🌐 Italiano</button>
   <span class="spacer"></span>
-  <button class="ibtn" id="vSmaller" type="button" aria-label="Testo più piccolo" title="Testo più piccolo">A−</button>
-  <button class="ibtn" id="vBigger" type="button" aria-label="Testo più grande" title="Testo più grande">A+</button>
+  <button class="ibtn" id="vSmaller" type="button" title="Testo più piccolo"><span aria-hidden="true">A−</span><span class="sr">Testo più piccolo</span></button>
+  <button class="ibtn" id="vBigger" type="button" title="Testo più grande"><span aria-hidden="true">A+</span><span class="sr">Testo più grande</span></button>
   <button class="ibtn" id="vPrev" type="button" aria-label="Pubblicazione più recente" title="Più recente">‹</button>
   <button class="ibtn" id="vNext" type="button" aria-label="Pubblicazione meno recente" title="Meno recente">›</button>
  </div>
- <div class="v-body" id="vBody"><div class="v-inner" id="vInner"></div></div>
+ <div class="v-body" tabindex="0" id="vBody"><div class="v-inner" id="vInner"></div></div>
 </div>
 
-<script>const APP_VERSION = "1.1.0";</script>
-<script src="shared.js?v=1.1.0"></script>
-<script src="js/core.js?v=1.1.0"></script>
-<script src="js/seen.js?v=1.1.0"></script>
-<script src="js/utils.js?v=1.1.0"></script>
-<script src="js/network.js?v=1.1.0"></script>
-<script src="js/viewer.js?v=1.1.0"></script>
-<script src="js/admin.js?v=1.1.0"></script>
-<script src="js/share.js?v=1.1.0"></script>
-<script src="js/admin-games.js?v=1.1.0"></script>
-<script src="js/cards.js?v=1.1.0"></script>
-<script src="js/cadence.js?v=1.1.0"></script>
-<script src="js/render.js?v=1.1.0"></script>
-<script src="js/notifications.js?v=1.1.0"></script>
-<script src="js/dialogs.js?v=1.1.0"></script>
-<script src="js/changelog.js?v=1.1.0"></script>
-<script src="js/team.js?v=1.1.0"></script>
-<script src="js/shell-ui.js?v=1.1.0"></script>
-<script src="js/sync.js?v=1.1.0"></script>
-<script src="js/boot.js?v=1.1.0"></script>
+<script>const APP_VERSION = "1.2.0";</script>
+<script src="shared.js?v=1.2.0"></script>
+<script src="js/core.js?v=1.2.0"></script>
+<script src="js/seen.js?v=1.2.0"></script>
+<script src="js/utils.js?v=1.2.0"></script>
+<script src="js/network.js?v=1.2.0"></script>
+<script src="js/viewer.js?v=1.2.0"></script>
+<script src="js/admin.js?v=1.2.0"></script>
+<script src="js/share.js?v=1.2.0"></script>
+<script src="js/admin-games.js?v=1.2.0"></script>
+<script src="js/cards.js?v=1.2.0"></script>
+<script src="js/cadence.js?v=1.2.0"></script>
+<script src="js/render.js?v=1.2.0"></script>
+<script src="js/notifications.js?v=1.2.0"></script>
+<script src="js/dialogs.js?v=1.2.0"></script>
+<script src="js/changelog.js?v=1.2.0"></script>
+<script src="js/team.js?v=1.2.0"></script>
+<script src="js/shell-ui.js?v=1.2.0"></script>
+<script src="js/sync.js?v=1.2.0"></script>
+<script src="js/backup.js?v=1.2.0"></script>
+<script src="js/boot.js?v=1.2.0"></script>
 </body>
 </html>

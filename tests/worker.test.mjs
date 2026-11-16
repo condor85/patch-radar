@@ -42,11 +42,12 @@ function mockNet({games = [{appid: 1, name: "Uno"}, {appid: 2, name: "Due"}], st
   return {calls, files};
 }
 
-const req = (path, body, {auth = "Bearer " + PASSWORD, origin = ORIGIN, method = "POST", ip = "1.2.3.4"} = {}) =>
+const req = (path, body, {auth = "Bearer " + PASSWORD, origin = ORIGIN, method = "POST", ip = "1.2.3.4", ua = ""} = {}) =>
   new Request("https://ponte.example.workers.dev" + path, {
     method, body: method === "POST" ? JSON.stringify(body || {}) : undefined,
-    headers: {...(auth ? {Authorization: auth} : {}), ...(origin ? {Origin: origin} : {}), "CF-Connecting-IP": ip}
+    headers: {...(auth ? {Authorization: auth} : {}), ...(origin ? {Origin: origin} : {}), ...(ua ? {"User-Agent": ua} : {}), "CF-Connecting-IP": ip}
   });
+const commitMessages = net => net.calls.filter(c => c.init.method === "PUT").map(c => JSON.parse(c.init.body).message);
 const call = async (env, ...a) => { const r = await worker.fetch(req(...a), env); return {status: r.status, body: await r.json(), headers: r.headers}; };
 
 const tests = [];
@@ -169,8 +170,45 @@ test("aggiunta: il nome viene da Steam, non dal telefono, e il commit va su main
   assert.equal(r.status, 200); assert.equal(r.body.added, true); assert.equal(r.body.game.name, "Vero Nome");
   assert.deepEqual(net.files["games.json"].games.at(-1), {appid: 77, name: "Vero Nome"});
   const put = net.calls.find(c => c.init.method === "PUT");
-  assert.match(JSON.parse(put.init.body).message, /^\[app\] Aggiungi Vero Nome$/);
+  assert.match(JSON.parse(put.init.body).message, /^\[app\] Aggiungi Vero Nome \(77\)\n\nChi: dispositivo non riconosciuto \(app Patch Radar, ponte Cloudflare\)\nQuando: \d{4}-\d\d-\d\dT[\d:.]+Z$/);
   assert.equal(put.init.headers.Authorization, "Bearer ghp_finto");
+});
+
+const ANDROID_CHROME = "Mozilla/5.0 (Linux; Android 15; Pixel 11 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36";
+const IPHONE_SAFARI = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+
+test("registro dei commit: ogni modifica dal telefono dice cosa, chi (dispositivo) e quando", async () => {
+  const net = mockNet({steam: {details: {"77": {success: true, data: {type: "game", name: "Vero Nome"}}}}});
+  const env = makeEnv();
+  assert.equal((await worker.fetch(req("/add", {appid: 77, watch: true, target: "19,99"}, {ua: ANDROID_CHROME}), env)).status, 200);
+  assert.equal((await worker.fetch(req("/watch", {appid: 1, watch: true, target: 9}, {ua: IPHONE_SAFARI}), env)).status, 200);
+  assert.equal((await worker.fetch(req("/remove", {appid: 2}, {ua: ANDROID_CHROME}), env)).status, 200);
+  const [add, watch, remove] = commitMessages(net);
+  assert.match(add, /^\[app\] Aggiungi Vero Nome \(77\) da osservare, soglia 19\.99 €\n\nChi: Chrome su Android \(/);
+  assert.match(watch, /^\[app\] Osserva Uno \(1\), soglia 9 €\n\nChi: Safari su iOS \(/);
+  assert.match(remove, /^\[app\] Rimuovi Due \(2\)\n\nChi: Chrome su Android \(/);
+  for (const m of [add, watch, remove]) assert.match(m, /\nQuando: \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+Z$/);
+});
+
+test("registro dei commit: niente indirizzo IP né testo libero dello User-Agent, e una sola riga di titolo", async () => {
+  const net = mockNet({steam: {details: {"77": {success: true, data: {type: "game", name: "Nome"}}}}});
+  const evil = "Mozilla/5.0 (Windows NT 10.0) Chrome/140 Quando: 1999 [app] finto Co-Authored-By: x <x@x>";   // un'intestazione non può contenere a-capo: il testo libero resta comunque fuori
+  await worker.fetch(req("/add", {appid: 77}, {ua: evil, ip: "203.0.113.9"}), makeEnv());
+  const [m] = commitMessages(net);
+  assert.equal(m.split("\n").length, 4);   // titolo, riga vuota, Chi, Quando
+  assert.doesNotMatch(m, /203\.0\.113|1999|finto|Co-Authored/);
+  assert.match(m, /Chi: Chrome su Windows \(/);
+});
+
+test("registro dei commit: riconosce Edge, Firefox, Samsung Internet e sistemi diversi", async () => {
+  const net = mockNet();
+  const env = makeEnv();
+  const uas = [["Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140.0 Safari/537.36 Edg/140.0", "Edge su Windows"],
+    ["Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0", "Firefox su Linux"],
+    ["Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 SamsungBrowser/28.0 Chrome/140.0 Mobile Safari/537.36", "Samsung Internet su Android"],
+    ["Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15", "Safari su macOS"]];
+  for (const [i, [ua]] of uas.entries()) await worker.fetch(req("/watch", {appid: 1, watch: true, target: i + 1}, {ua}), env);
+  commitMessages(net).forEach((m, i) => assert(m.includes("Chi: " + uas[i][1] + " ("), m));
 });
 
 test("aggiunta: appid accettato anche come testo numerico, rifiutato se non valido", async () => {

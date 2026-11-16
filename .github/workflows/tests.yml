@@ -45,3 +45,15 @@ jobs:
         run: node tests/changelog.test.js
       - name: Struttura dell'app
         run: node tests/structure.test.js
+      - name: Dati vecchi
+        run: node tests/stale.test.js
+      - name: Esporta e importa
+        run: node tests/backup.test.js
+      # Prova in un vero browser con dati finti: errori in console, schermate principali, uso da tastiera e accessibilità (axe).
+      # Le versioni di Playwright e axe-core sono fissate in package-lock.json; `npm ci` non scrive nulla e non esegue script di installazione.
+      - name: Installa gli strumenti di prova del browser
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Prova nel browser e accessibilità
+        run: node tests/browser.test.js

@@ -1,0 +1,12 @@
+{
+  "name": "game-patch-radar",
+  "private": true,
+  "description": "Solo strumenti di prova (browser e accessibilità): l'app non ha dipendenze e non usa npm per funzionare.",
+  "scripts": {
+    "test:browser": "node tests/browser.test.js"
+  },
+  "devDependencies": {
+    "axe-core": "4.14.0",
+    "playwright": "1.63.0"
+  }
+}

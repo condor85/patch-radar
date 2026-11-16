@@ -50,6 +50,13 @@ class WorkflowSecurity(unittest.TestCase):
         self.assertRegex(text, r"permissions:\s*\n\s+contents: read")
         self.assertIn("persist-credentials: false", text)
 
+    def test_every_node_test_runs_in_ci(self):
+        """Un file tests/*.test.js(mjs) non nominato in tests.yml esiste ma non protegge nulla: se ne accorge qualcuno solo dopo un guasto."""
+        text = read(os.path.join(ROOT, ".github", "workflows", "tests.yml"))
+        for name in sorted(os.listdir(os.path.join(ROOT, "tests"))):
+            if re.search(r"\.test\.m?js$", name):
+                self.assertIn("tests/" + name, text, f"tests/{name} non è lanciato da tests.yml")
+
     def test_dependabot_keeps_actions_up_to_date(self):
         text = read(os.path.join(ROOT, ".github", "dependabot.yml"))
         self.assertIn("github-actions", text)

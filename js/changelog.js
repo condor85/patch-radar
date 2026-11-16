@@ -4,6 +4,11 @@
    tests/changelog.test.js controlla che la prima voce e APP_VERSION coincidano e che il formato sia corretto.
    Tipi ammessi: nuovo, migliorato, sicurezza, corretto. */
 const CHANGELOG = [
+ {version: "1.2.0", date: "2026-11-16", changes: [
+  {type: "nuovo", text: "Esporta e importa i tuoi dati: in Impostazioni puoi salvare in un file i giochi nascosti, le patch lette, i salvati e le preferenze, e ritrovarli su un altro telefono o dopo una reinstallazione. L'importazione si unisce ai dati che hai già e chiede conferma."},
+  {type: "nuovo", text: "Se i dati non si aggiornano da molte ore (Steam o il servizio dei riassunti hanno un problema), in alto compare un avviso che lo dice."},
+  {type: "migliorato", text: "Accessibilità: ogni interruttore e ogni pulsante ha un nome leggibile dagli screen reader, i messaggi di stato vengono annunciati e il numero di versione si può attivare a voce."},
+ ]},
  {version: "1.1.0", date: "2026-11-15", changes: [
   {type: "nuovo", text: "Il numero di versione è visibile in alto, accanto al nome. Toccalo per leggere le novità, come in questa pagina."},
   {type: "sicurezza", text: "Le notifiche restano verificate anche quando la rete non risponde: una notifica falsa non può più passare in quel momento."},
@@ -37,5 +42,6 @@ function openChangelog() {
 }
 
 $("verBtn").textContent = "v" + APP_VERSION_SHOWN;
+$("verBtn").setAttribute("aria-label", "v" + APP_VERSION_SHOWN + ": novità dell'app");   // il nome contiene il testo che si vede (così «dì: v1.1.0» funziona con i comandi vocali)
 $("verBtn").addEventListener("click", openChangelog);
 $("clClose").addEventListener("click", () => closeOv("changelog"));

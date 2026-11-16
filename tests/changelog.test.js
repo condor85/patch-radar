@@ -10,7 +10,7 @@ const appVersion = /const APP_VERSION = "([^"]+)"/.exec(html)[1];
 
 // il file si carica con un DOM finto minimo: serve solo per leggere i dati e provare le funzioni pure
 const els = {};
-const fakeEl = id => els[id] || (els[id] = {id, textContent: "", innerHTML: "", listeners: {}, addEventListener(t, f) { this.listeners[t] = f; }, append() {}});
+const fakeEl = id => els[id] || (els[id] = {id, textContent: "", innerHTML: "", attrs: {}, listeners: {}, addEventListener(t, f) { this.listeners[t] = f; }, setAttribute(k, v) { this.attrs[k] = v; }, append() {}});
 const ctx = {APP_VERSION: appVersion, $: fakeEl, h: () => ({append() {}}), openOv() {}, closeOv() {}, Intl, Date, String, isNaN};
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(root, "js", "changelog.js"), "utf8") + "\n;this.api = {CHANGELOG, CHANGE_TYPES, APP_VERSION_SHOWN, changelogDate};", ctx, {filename: "changelog.js"});
@@ -53,6 +53,7 @@ t("il numero mostrato in alto non include il suffisso di controllo aggiunto alla
   vm.runInContext(fs.readFileSync(path.join(root, "js", "changelog.js"), "utf8") + "\n;this.shown = APP_VERSION_SHOWN;", c2);
   assert.equal(c2.shown, "1.1.0");
   assert.equal(els.verBtn.textContent, "v1.1.0");
+  assert.equal(els.verBtn.attrs["aria-label"], "v1.1.0: novità dell'app", "il nome accessibile deve contenere il testo visibile");
 });
 
 t("la pagina ha il pulsante della versione e la finestra delle novità", () => {

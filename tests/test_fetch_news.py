@@ -130,6 +130,69 @@ class Summaries(unittest.TestCase):
         sleep.assert_not_called()
 
 
+class RunSummary(unittest.TestCase):
+    """Il riepilogo orario (GITHUB_STEP_SUMMARY) racconta cosa è successo senza dover leggere i log."""
+
+    def setUp(self):
+        fn.reset_stats()
+        self.addCleanup(fn.STATS.clear)
+
+    def test_counts_translations_and_models(self):
+        games = [game(1, ["Patch 1.0", "Patch 1.1"])]
+        with mock.patch.object(fn, "GEMINI_KEY", "k"), mock.patch.object(fn.time, "sleep"), mock.patch.object(fn, "TRANSLATE_BUDGET", 5), \
+                mock.patch.object(fn, "translate_item", side_effect=[{"title": "t", "text": "x" * 100, "src": "gemini"}, RuntimeError("boom")]), \
+                contextlib.redirect_stderr(io.StringIO()):
+            fn.add_translations(games)
+        self.assertEqual((fn.STATS["translations_ok"], fn.STATS["translations_failed"]), (1, 1))
+
+    def test_rate_limit_is_recorded(self):
+        err = fn.urllib.error.HTTPError("u", 429, "Too Many", {}, io.BytesIO(b"quota"))
+        with mock.patch.object(fn, "GEMINI_KEY", "k"), mock.patch.object(fn, "gemini_models", return_value=["m1"]), \
+                mock.patch.object(fn.urllib.request, "urlopen", side_effect=err):
+            with self.assertRaises(fn.RateLimited):
+                fn.gemini_call("s", "u")
+        self.assertTrue(fn.STATS["quota"])
+
+    def test_successful_model_is_recorded_once(self):
+        fn.stat_model("gemini-x"); fn.stat_model("gemini-x"); fn.stat_model("gemini-y")
+        self.assertEqual(fn.STATS["models"], ["gemini-x", "gemini-y"])
+
+    def test_summary_is_markdown_and_appended(self):
+        fn.STATS.update({"games": 3, "games_ok": 2, "games_failed": ["Valheim"], "new_items": 4, "summaries_ai": 2, "translations_ok": 1, "models": ["gemini-flash-latest"], "quota": True, "changed": True})
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "summary.md")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("# già qui\n")
+            fn.write_summary(path)
+            text = read(path)
+        self.assertTrue(text.startswith("# già qui\n"))   # si accoda: gli altri passi del workflow scrivono nello stesso file
+        for expected in ("2 su 3", "non letti: Valheim", "| Annunci nuovi | 4 |", "2 con Gemini", "gemini-flash-latest", "| Quota Gemini esaurita | sì |", "| Dati cambiati | sì |", "Durata"):
+            self.assertIn(expected, text)
+
+    def test_summary_without_destination_or_stats_does_nothing(self):
+        fn.write_summary(None)   # nessun GITHUB_STEP_SUMMARY: non fa nulla
+        fn.STATS.clear()
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "s.md")
+            fn.write_summary(path)
+            self.assertFalse(os.path.exists(path))
+
+    def test_unwritable_destination_does_not_raise(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            fn.write_summary("/nonexistent-dir/x/summary.md")
+
+    def test_main_writes_the_summary(self):
+        prev = {"updated": 1, "digest_ts": 1, "games": [game(1, ["Patch 1.0"])]}
+        files = {"games.json": {"games": [{"appid": 1, "name": "G1"}]}, "config.json": {"ntfyTopic": "t"}, "data/news.json": prev}
+        with workdir(files, env={"GITHUB_STEP_SUMMARY": "summary.md"}):
+            with mock.patch.object(fn, "fetch_game", side_effect=OSError("down")), mock.patch.object(fn, "store_details", side_effect=OSError("down")), \
+                    mock.patch.object(fn, "fetch_ntfy_key", return_value=""), contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                fn.main()
+            text = read("summary.md")
+        self.assertIn("0 su 1", text)
+        self.assertIn("non letti: G1", text)
+
+
 class Http(unittest.TestCase):
     def test_no_sleep_after_last_attempt(self):
         with mock.patch.object(fn.urllib.request, "urlopen", side_effect=OSError("down")), mock.patch.object(fn.time, "sleep") as sleep:

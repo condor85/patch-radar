@@ -10,8 +10,9 @@ function setFont(i) {
 }
 function renderFont() {
  const row = $("fontRow"); row.innerHTML = "";
- row.append(h("button", {type: "button", class: "abtn", "aria-label": "Testo più piccolo", ...(fontIdx === 0 ? {disabled: ""} : {}), onclick: () => setFont(fontIdx - 1)}, "A−"),
-  h("button", {type: "button", class: "abtn", "aria-label": "Testo più grande", ...(fontIdx === FONTS.length - 1 ? {disabled: ""} : {}), onclick: () => setFont(fontIdx + 1)}, "A+"),
+ // il nome accessibile è un testo nascosto (non aria-label): così il testo visibile «A−» non contraddice il nome (regola WCAG «label in name»)
+ row.append(h("button", {type: "button", class: "abtn", ...(fontIdx === 0 ? {disabled: ""} : {}), onclick: () => setFont(fontIdx - 1)}, h("span", {"aria-hidden": "true"}, "A−"), h("span", {class: "sr"}, "Testo più piccolo")),
+  h("button", {type: "button", class: "abtn", ...(fontIdx === FONTS.length - 1 ? {disabled: ""} : {}), onclick: () => setFont(fontIdx + 1)}, h("span", {"aria-hidden": "true"}, "A+"), h("span", {class: "sr"}, "Testo più grande")),
   h("span", {class: "v-note", style: "align-self:center;margin:0"}, "Testo: " + Math.round(FONTS[fontIdx] * 100) + "%"));
 }
 

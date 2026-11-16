@@ -307,7 +307,7 @@ function openManager() {
   l.append(c, document.createTextNode(GAMES[k].name)); box.append(l);
  }
  openOv("manager");
- renderNotif(); renderTheme(); renderFont(); renderSync(); renderAdmin();
+ renderNotif(); renderTheme(); renderFont(); renderSync(); renderBackup(); renderAdmin();
 }
 function closeManager() { closeOv("manager"); }
 $("manageBtn").addEventListener("click", openManager);

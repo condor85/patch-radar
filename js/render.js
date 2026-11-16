@@ -45,9 +45,10 @@ async function loadCheck() {
  } catch {} finally { clearTimeout(timer); }
 }
 function renderStale() {
- const el = $("stale"), late = lastCheck && Date.now() - lastCheck > STALE_MS;
- el.hidden = !late;
+ const el = $("stale"), late = lastCheck && Date.now() - lastCheck > STALE_MS, old = staleHours(dataFresh);
+ el.hidden = !late && !old;
  if (late) el.textContent = "⏱ Il controllo automatico delle novità non parte da " + Math.floor((Date.now() - lastCheck) / 3600000) + " ore: potresti non vedere gli ultimi aggiornamenti. È un ritardo di GitHub e di solito si risolve da solo.";
+ else if (old) el.textContent = "⚠️ I dati non si aggiornano da circa " + old + " ore: Steam o il servizio che prepara i riassunti potrebbero avere un problema, quindi le ultime patch potrebbero mancare. Di solito si risolve da solo.";
 }
 
 function render() {
