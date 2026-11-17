@@ -89,6 +89,18 @@ class Translations(unittest.TestCase):
         self.assertTrue(all("it" not in i for i in games[0]["items"]))
         self.assertEqual(self.sleep.call_count, 3)  # pausa solo dopo richieste vere
 
+    def test_only_releases_are_translated(self):
+        games = [game(1, ["Summer Sale 50% off", "Livestream with the devs", "Patch 1.2 notes"])]
+        asked = []
+
+        def fake(name, item):
+            asked.append(item["title"])
+            return {"title": "t", "text": "x" * 100, "src": "gemini"}
+
+        with mock.patch.object(fn, "translate_item", fake):
+            fn.add_translations(games)
+        self.assertEqual(asked, ["Patch 1.2 notes"])
+
     def test_failures_are_counted_then_skipped_then_retried_after_a_day(self):
         games = [game(1, ["Patch 1.0"])]
         item = games[0]["items"][0]
@@ -128,6 +140,37 @@ class Summaries(unittest.TestCase):
                 mock.patch.object(fn, "gemini_call", side_effect=AssertionError("non va chiamato")):
             fn.add_summaries(games, {})
         sleep.assert_not_called()
+
+    def test_only_releases_use_gemini(self):
+        # un saldo e un evento non devono consumare richieste a Gemini: riassunto semplice, gratuito; la patch invece va a Gemini
+        games = [game(1, ["Summer Sale 50% off", "Patch 1.2 notes", "Livestream with the devs"])]
+        asked = []
+
+        def fake_summarize(name, item):
+            asked.append(item["title"])
+            return "• riassunto IA"
+
+        with mock.patch.object(fn, "GEMINI_KEY", "k"), mock.patch.object(fn.time, "sleep"), \
+                mock.patch.object(fn, "summarize", fake_summarize), mock.patch.object(fn, "extractive_summary", return_value="• semplice"):
+            fn.add_summaries(games, {})
+        self.assertEqual(asked, ["Patch 1.2 notes"])
+        by_title = {i["title"]: (i["summary"], i["summary_src"]) for i in games[0]["items"]}
+        self.assertEqual(by_title["Patch 1.2 notes"], ("• riassunto IA", "ai"))
+        self.assertEqual(by_title["Summer Sale 50% off"], ("• semplice", "simple"))
+        self.assertEqual(by_title["Livestream with the devs"], ("• semplice", "simple"))
+
+    def test_existing_summaries_are_not_redone(self):
+        games = [game(1, ["Patch 1.2 notes"])]
+        old = {"1": {"items": [{"gid": "10", "summary": "• già fatto dall'IA", "summary_src": "ai"}]}}
+        with mock.patch.object(fn, "GEMINI_KEY", "k"), mock.patch.object(fn, "summarize", side_effect=AssertionError("non va richiamato")):
+            fn.add_summaries(games, old)
+        self.assertEqual(games[0]["items"][0]["summary"], "• già fatto dall'IA")
+
+    def test_wants_gemini_follows_classify_and_falls_back_to_is_patch(self):
+        self.assertTrue(fn.wants_gemini({"title": "x", "patch": True}))
+        self.assertFalse(fn.wants_gemini({"title": "Patch 1.0", "patch": False}))   # vale il giudizio già dato da classify()
+        self.assertTrue(fn.wants_gemini({"title": "Patch 1.0", "contents": ""}))
+        self.assertFalse(fn.wants_gemini({"title": "Summer Sale", "contents": ""}))
 
 
 class RunSummary(unittest.TestCase):

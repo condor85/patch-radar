@@ -562,8 +562,15 @@ def merge_history(items, old_items):
     return sorted(items + kept, key=lambda x: x.get("date") or 0, reverse=True)[:HISTORY_MAX]
 
 
+def wants_gemini(it):
+    """True solo per i rilasci veri (note di aggiornamento): saldi, eventi e annunci non consumano richieste a Gemini.
+    Usa il giudizio già dato da classify() se c'è, altrimenti lo calcola."""
+    patch = it.get("patch")
+    return bool(is_patch(it) if patch is None else patch)
+
+
 def add_summaries(games, old):
-    """Riporta i riassunti già fatti e ne crea di nuovi (Gemini se c'è la chiave, altrimenti metodo semplice)."""
+    """Riporta i riassunti già fatti e ne crea di nuovi: Gemini solo per i rilasci, metodo semplice (gratuito) per il resto."""
     budget, use_ai = MAX_SUMMARIES, bool(GEMINI_KEY)
     for g in games:
         prev = {str(i["gid"]): i for i in old.get(str(g["appid"]), {}).get("items", [])}
@@ -582,10 +589,11 @@ def add_summaries(games, old):
         for it in g["items"][:6]:
             if budget <= 0:
                 return
-            if it.get("summary") and (it.get("summary_src") == "ai" or not use_ai):
+            ai_ok = use_ai and wants_gemini(it)
+            if it.get("summary") and (it.get("summary_src") == "ai" or not ai_ok):
                 continue
             text, src = "", "simple"
-            if use_ai:
+            if ai_ok:
                 try:
                     text = summarize(g["name"], it)
                     if text:  # summarize() torna "" senza chiamare Gemini se il testo è troppo corto: niente pausa inutile
@@ -611,9 +619,6 @@ def add_summaries(games, old):
                 stat_add("summaries_ai" if src == "ai" else "summaries_simple")
 
 
-PATCH_RE = re.compile(r"patch|hotfix|hot fix|update|changelog|release notes|\bfix(es)?\b|\bv?\d+\.\d+|\bbuild \d+", re.I)
-
-
 TRANSLATE_RETRIES = 3        # tentativi falliti prima di fermarsi...
 TRANSLATE_RETRY_AFTER = 86400  # ...e di riprovare dopo un giorno
 
@@ -632,7 +637,7 @@ def add_translations(games):
         for it in g["items"][:3]:
             if budget <= 0:
                 return
-            if it.get("it") or translation_gave_up(it) or not (PATCH_RE.search(it.get("title") or "") or "patchnotes" in (it.get("tags") or [])):
+            if it.get("it") or translation_gave_up(it) or not wants_gemini(it):
                 continue
             try:
                 tr = translate_item(g["name"], it)
