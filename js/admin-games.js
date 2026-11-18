@@ -101,6 +101,8 @@ async function bridgeWatch(game, watch, target) {
  afterGamesChange();
  if (notifPref.on) syncNotif().catch(() => {});
 }
+/* Clic su «Osserva» / «Smetti»: di norma inverte lo stato. Con Maiusc su un gioco già osservato si cambia solo il prezzo e si continua a osservare. */
+function watchAfterClick(g, shift) { return !g.watch || !!shift; }
 function euro(n) { return Number(n).toLocaleString("it-IT", {minimumFractionDigits: 2, maximumFractionDigits: 2}) + " €"; }
 function parseEuro(text) {
  const t = String(text == null ? "" : text).trim().replace(",", ".");
@@ -199,15 +201,16 @@ async function renderBridgeAdmin() {
  box.append(h("h4", {}, "Giochi dell'app (per tutti)"));
  for (const g of currentList()) {
   const eye = h("button", {class: "abtn", type: "button", title: g.watch ? "Torna a seguire tutte le patch" : "Tieni d'occhio: solo patch importanti e avviso di prezzo", onclick: async e => {
+   const watch = watchAfterClick(g, e.shiftKey);
    let target = null;
-   if (!g.watch || e.shiftKey) {
+   if (watch) {
     const ans = prompt("Avvisami quando il prezzo di «" + g.name + "» scende sotto (in euro). Lascia vuoto per non avere avvisi di prezzo.", g.target ? String(g.target).replace(".", ",") : "");
     if (ans === null) return;
     target = parseEuro(ans);
     if (Number.isNaN(target)) { msgEl(box, "Prezzo non valido: scrivi un importo in euro, per esempio 19,99.", false); return; }
    }
    e.target.disabled = true;
-   try { await bridgeWatch(g, g.watch ? false : true, target); } catch (err) { e.target.disabled = false; msgEl(box, err.message, false); }
+   try { await bridgeWatch(g, watch, target); } catch (err) { e.target.disabled = false; msgEl(box, err.message, false); }
   }}, g.watch ? "👁 Smetti" : "👁 Osserva");
   box.append(h("div", {class: "row"}, h("span", {class: "nm"}, g.name + (g.watch ? " 👁" + (g.target ? " (sotto " + euro(g.target) + ")" : "") : "")), eye, h("button", {class: "abtn danger", type: "button", onclick: async e => {
    if (!confirm("Eliminare «" + g.name + "» dall'app per tutti?")) return;
