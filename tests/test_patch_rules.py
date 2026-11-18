@@ -31,6 +31,25 @@ class PatchRulesStandalone(unittest.TestCase):
     def test_structured_lines_keeps_headings_and_bullets(self):
         self.assertEqual(pr.structured_lines("[h2]Novità[/h2][list][*]Uno[*]Due[/list]"), ["# Novità", "• Uno", "• Due"])
 
+    def test_escaped_square_brackets_are_text_not_tags(self):
+        # Steam scrive le parentesi quadre vere con la barra («\[AMD]»): sono parole dell'autore (piattaforma, personaggio, tasto)
+        raw = "[list][*]\\[AMD] Fixed an issue where crashes occurred[*]\\[Controller] Fixed 'Cancel'[*]\\[I] opens the inventory[/list]"
+        self.assertEqual(pr.structured_lines(raw), ["• [AMD] Fixed an issue where crashes occurred", "• [Controller] Fixed 'Cancel'", "• [I] opens the inventory"])
+        self.assertEqual(pr.structured_lines("binding evade to \\[RMB]+\\[SPACE] would jump"), ["binding evade to [RMB]+[SPACE] would jump"])
+        self.assertEqual(pr.structured_lines("[url=https://x.test]\\[Known Issues][/url]"), ["[Known Issues]"])
+        self.assertEqual(pr.structured_lines("[Fixed] a crash"), ["[Fixed] a crash"])   # senza barra, una parola tra parentesi resta testo
+
+    def test_real_tags_are_still_removed(self):
+        self.assertEqual(pr.structured_lines('Guarda [dynamiclink href="https://x.test"][/dynamiclink] dal vivo'), ["Guarda dal vivo"])
+        self.assertEqual(pr.structured_lines('[video webm="a.webm" autoplay="1"][/video]Testo [b]forte[/b] [mistero=1]qui[/mistero]'), ["Testo forte qui"])
+        self.assertEqual(pr.structured_lines("a<br/>b <b>c</b>"), ["a", "b c"])
+        self.assertEqual(pr.structured_lines("se vita < 5 e danno > 3"), ["se vita < 5 e danno > 3"])   # un confronto non è HTML
+
+    def test_bracket_label_feeds_keyword_groups(self):
+        # «[Controller]» è proprio l'etichetta che l'avviso per parola chiave cerca: non va cancellata
+        item = {"title": "Patch Notes", "contents": "[list][*]\\[Controller] Fixed an issue where selecting 'Cancel' closed the menu[/list]"}
+        self.assertIn("controller", pr.keywords_of(item))
+
     def test_keyword_groups_match_shared(self):
         self.assertEqual([g for g, _ in pr.SHARED["keywordGroups"]], list(pr.KEYWORD_GROUPS))
 

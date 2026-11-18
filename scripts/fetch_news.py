@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ed25519  # noqa: E402
 from patch_rules import (KEYWORD_GROUPS, LABEL_RULES, MAJOR_TITLE_RE, NEWS_TITLE, SHARED, STRONG_TITLE, VERSION_TITLE,  # noqa: E402, F401
-                         classify, is_major, is_patch, keywords_of, labels_of, structured_lines)
+                         classify, is_major, is_patch, keywords_of, labels_of, strip_markup, structured_lines)
 
 API = os.environ.get("STEAM_API_BASE", "https://api.steampowered.com")
 STORE = os.environ.get("STEAM_STORE_BASE", "https://store.steampowered.com")
@@ -334,9 +334,7 @@ def fetch_ntfy_key():
 def clean(text):
     t = re.sub(r"\[img[^\]]*\][\s\S]*?\[/img\]", "", text or "")
     t = re.sub(r"\{STEAM_CLAN_(?:LOC_)?IMAGE\}\S*", "", t)
-    t = re.sub(r"\[/?[a-zA-Z*][^\]]*\]", " ", t)
-    t = re.sub(r"<[^>]+>", " ", t)
-    return re.sub(r"\s+", " ", t).strip()
+    return re.sub(r"\s+", " ", strip_markup(t, " ")).strip()   # tag veri via, parole tra parentesi quadre ([AMD], [ESC]) restano
 
 
 SYSTEM_PROMPT = """Sei un redattore italiano di notizie sui videogiochi. Ricevi le note di aggiornamento (patch notes) o un annuncio di un gioco e scrivi un riassunto per un giocatore che ha poco tempo.

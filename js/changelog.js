@@ -4,6 +4,10 @@
    tests/changelog.test.js controlla che la prima voce e APP_VERSION coincidano e che il formato sia corretto.
    Tipi ammessi: nuovo, migliorato, sicurezza, corretto. */
 const CHANGELOG = [
+ {version: "1.3.1", date: "2026-11-18", changes: [
+  {type: "corretto", text: "Nelle note delle patch non compaiono più pezzi di codice come [dynamiclink href=…], e le parole tra parentesi quadre, come [AMD] o [ESC], si leggono per intero, senza la barra rovesciata."},
+  {type: "corretto", text: "Riassunti, traduzioni e avvisi per parola chiave non perdono più le etichette tra parentesi quadre ([Controller], [Kliff]) né i nomi dei tasti ([RMB], [SPACE])."},
+ ]},
  {version: "1.3.0", date: "2026-11-16", changes: [
   {type: "nuovo", text: "Con molti giochi non serve più scorrere la barra di lato: in alto restano Home, il gioco aperto e quello con più novità, e il nuovo pulsante «Giochi» apre l'elenco completo in una griglia."},
   {type: "nuovo", text: "Nell'elenco dei giochi puoi cercare per nome e ordinare per novità, ultima patch o A–Z. La scelta resta salvata sul dispositivo."},

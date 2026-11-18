@@ -20,14 +20,28 @@ def _load_shared():
 SHARED = _load_shared()
 
 
+_KNOWN_TAGS = r"(?:b|i|u|strike|spoiler|noparse|url|td|th|tr|table|code|expand|center|left|right|sub|sup|carousel|video|previewyoutube|youtube|dynamiclink|img|h[1-6]|p|list|olist|quote|hr|\*)"
+
+
+def strip_markup(t, sep=""):
+    """Toglie il BBCode e l'HTML di Steam senza perdere testo vero. Steam scrive le parentesi quadre letterali con la barra
+    rovesciata («\\[AMD] Fixed…», «\\[ESC]», «\\[RMB]+\\[SPACE]»): quelle sono parole dell'autore (piattaforma, personaggio, tasto)
+    e restano, senza barra. Si tolgono solo i tag veri: le chiusure («[/x]»), i tag noti e quelli con attributi («[x href=…]»)."""
+    t = re.sub(r"(?<!\\)\[/[a-zA-Z0-9*]+\]", sep, t)
+    t = re.sub(r"(?<!\\)\[" + _KNOWN_TAGS + r"(?:[= ][^\]]*)?\]", sep, t, flags=re.I)
+    t = re.sub(r"(?<!\\)\[[a-zA-Z][a-zA-Z0-9]*(?: [a-zA-Z-]+=[^\]]*|=[^\]]*)\]", sep, t)
+    t = re.sub(r"</?[a-zA-Z][^<>]*>", sep, t)   # solo HTML vero: «se vita < 5 e danno > 3» resta com'è
+    return re.sub(r"\\([\[\]])", r"\1", t)
+
+
 def structured_lines(text):
     t = re.sub(r"\[img[^\]]*\][\s\S]*?\[/img\]", "", text or "")
     t = re.sub(r"\{STEAM_CLAN_(?:LOC_)?IMAGE\}\S*", "", t)
-    t = re.sub(r"\[\*\]", "\n• ", t)
-    t = re.sub(r"\[h[1-6][^\]]*\]", "\n# ", t)
-    t = re.sub(r"\[/?(?:h[1-6]|p|list|olist|quote|hr)[^\]]*\]", "\n", t)
+    t = re.sub(r"(?<!\\)\[\*\]", "\n• ", t)
+    t = re.sub(r"(?<!\\)\[h[1-6](?:[= ][^\]]*)?\]", "\n# ", t)
+    t = re.sub(r"(?<!\\)\[/?(?:h[1-6]|p|list|olist|quote|hr)(?:[= ][^\]]*)?\]", "\n", t)
     t = re.sub(r"<br\s*/?>|</(?:p|div|li|h[1-6])>", "\n", t)
-    t = re.sub(r"\[/?[a-zA-Z][^\]]*\]|<[^>]+>", "", t)
+    t = strip_markup(t)
     return [re.sub(r"\s+", " ", l).strip() for l in t.split("\n") if l.strip()]
 
 

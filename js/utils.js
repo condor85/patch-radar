@@ -31,6 +31,9 @@ function itemKey(item) { return String(item.gid || item.url || item.title) + ":"
 function plainText(input) {
  if (!input) return "";
  let s = String(input).replace(/\r/g, "");
+ // Steam scrive le parentesi quadre vere con la barra («\[ESC]», «\[AMD] Fixed…»): sono testo dell'autore, non tag. Le metto da parte
+ // (\u0001 = «[», \u0002 = «]») così nessuna regola le tocca, e le rimetto alla fine senza barra.
+ s = s.replace(/\\\[/g, "\u0001").replace(/\\\]/g, "\u0002");
  s = s.replace(/\{STEAM_CLAN_(?:LOC_)?IMAGE\}\S*/g, "");
  s = s.replace(/\[img[^\]]*\][\s\S]*?\[\/img\]/gi, "");
  s = s.replace(/\[(?:previewyoutube|video|youtube)[^\]]*\][\s\S]*?\[\/(?:previewyoutube|video|youtube)\]/gi, "");
@@ -40,8 +43,13 @@ function plainText(input) {
  s = s.replace(/\[p(?:[= ][^\]]*)?\]/gi, "\n");
  s = s.replace(/\[\*\]/g, "\n• ");
  s = s.replace(/\[\/?(?:list|olist|quote|code|table|tr|hr)(?:[= ][^\]]*)?\]/gi, "\n");
- s = s.replace(/\[\/?(?:b|i|u|strike|spoiler|noparse|url|td|th|expand|center|left|right)(?:[= ][^\]]*)?\]/gi, "");
+ s = s.replace(/\[\/?(?:b|i|u|strike|spoiler|noparse|url|td|th|expand|center|left|right|sub|sup|dynamiclink|carousel)(?:[= ][^\]]*)?\]/gi, "");
+ // Tag che non conosciamo: le chiusure non sono mai testo e le aperture con attributi nemmeno ([dynamiclink href=…]).
+ // Le parole tra parentesi quadre senza attributi ([AMD], [Fixed]) sono testo dell'autore e restano.
+ s = s.replace(/\[\/[a-z0-9*]+\]/gi, "");
+ s = s.replace(/\[[a-z][a-z0-9]*(?: [a-z-]+=[^\]]*|=[^\]]*)\]/gi, "");
  s = s.replace(/<br\s*\/?>/gi, "\n").replace(/<\/(?:p|div|li|h[1-6]|tr)>/gi, "\n").replace(/<li[^>]*>/gi, "• ").replace(/<\/?[a-z][^>]*>/gi, "");
+ s = s.replace(/\u0001/g, "[").replace(/\u0002/g, "]");
  const ta = document.createElement("textarea"); ta.innerHTML = s; s = ta.value;
  return s.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }

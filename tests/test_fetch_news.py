@@ -173,6 +173,20 @@ class Summaries(unittest.TestCase):
         self.assertFalse(fn.wants_gemini({"title": "Summer Sale", "contents": ""}))
 
 
+class CleanText(unittest.TestCase):
+    """clean() prepara il testo per Gemini: i tag di Steam spariscono, le parole dell'autore tra parentesi quadre restano."""
+
+    def test_keeps_escaped_bracket_words(self):
+        self.assertEqual(fn.clean("[p]\\[AMD] Fixed crashes[/p][p]binding \\[RMB]+\\[SPACE] to jump[/p]"), "[AMD] Fixed crashes binding [RMB]+[SPACE] to jump")
+
+    def test_removes_real_tags_and_images(self):
+        raw = '[img]https://x.test/a.png[/img][h2]Novità[/h2][list][*]Uno[*]Due[/list][dynamiclink href="https://x.test"][/dynamiclink]{STEAM_CLAN_IMAGE}/a/b.png <b>fine</b>'
+        self.assertEqual(fn.clean(raw), "Novità Uno Due fine")
+
+    def test_empty(self):
+        self.assertEqual(fn.clean(None), "")
+
+
 class RunSummary(unittest.TestCase):
     """Il riepilogo orario (GITHUB_STEP_SUMMARY) racconta cosa è successo senza dover leggere i log."""
 
