@@ -9,7 +9,14 @@ const SAVED_KEY = "game_patch_radar_saved_v1";
 const REMOVED_KEY = "game_patch_radar_savedremoved_v1";
 let saved = [];   // {id, appid, gid, title, date, url, summary, ts}  (ts = quando l'hai salvata)
 let savedRemoved = {};   // id -> quando l'hai tolta dai salvati: serve a toglierla anche sugli altri dispositivi
-function loadSaved() { try { saved = JSON.parse(localStorage.getItem(SAVED_KEY) || "[]") || []; } catch { saved = []; } }
+function loadSaved() {
+ try {
+  const v = JSON.parse(localStorage.getItem(SAVED_KEY) || "[]"), str = x => x == null ? "" : String(x);
+  // si tengono le voci con un identificativo e si riportano i campi al tipo atteso: una voce rovinata non deve far fallire l'elenco intero
+  saved = Array.isArray(v) ? v.filter(x => x && typeof x === "object" && typeof x.id === "string" && x.id)
+   .map(x => ({...x, appid: str(x.appid), gid: str(x.gid), title: str(x.title), url: typeof x.url === "string" ? x.url : "", summary: str(x.summary), date: Number(x.date) || 0, ts: Number(x.ts) || 0})) : [];
+ } catch { saved = []; }
+}
 function persistSaved(quiet) {
  try { localStorage.setItem(SAVED_KEY, JSON.stringify(saved)); localStorage.setItem(REMOVED_KEY, JSON.stringify(savedRemoved)); } catch {}
  if (!quiet) syncSoon();

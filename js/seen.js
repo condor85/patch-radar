@@ -9,7 +9,14 @@ let lastTotal = null;
 let autoPicked = false;
 let shownAt = Date.now();
 function loadSeen() {
- try { const d = JSON.parse(localStorage.getItem(SEEN_KEY) || "null"); if (d) { seen = d.seen || {}; lastVisit = prevVisit = d.lastVisit || 0; } } catch {}
+ try {
+  const d = JSON.parse(localStorage.getItem(SEEN_KEY) || "null");
+  if (d && typeof d === "object" && !Array.isArray(d)) {
+   const s = {};   // si tengono solo i giochi con un elenco di identificativi: un numero al posto dell'elenco farebbe fallire .includes()
+   if (d.seen && typeof d.seen === "object" && !Array.isArray(d.seen)) for (const [k, list] of Object.entries(d.seen)) if (/^\d{1,9}$/.test(k) && Array.isArray(list)) s[k] = list.map(String);
+   seen = s; lastVisit = prevVisit = Number(d.lastVisit) || 0;
+  }
+ } catch {}
  seenSnap = JSON.stringify(seen);
 }
 function saveSeen() {

@@ -12,7 +12,12 @@ function save() {
 function load() {
  try {
   const d = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
-  if (d) { Object.assign(cache, d.cache || {}); Object.assign(trCache, d.trCache || {}); if (Array.isArray(d.games) && d.games.length) setGames(d.games); }
+  if (d && typeof d === "object") {
+   // come per le altre letture: solo la forma giusta (save() fa slice() sugli elenchi e legge .src dalle traduzioni)
+   if (d.cache && typeof d.cache === "object") for (const [k, v] of Object.entries(d.cache)) if (Array.isArray(v)) cache[k] = v.filter(x => x && typeof x === "object");
+   if (d.trCache && typeof d.trCache === "object") for (const [k, v] of Object.entries(d.trCache)) if (v && typeof v === "object") trCache[k] = v;
+   if (Array.isArray(d.games) && d.games.length) setGames(d.games);
+  }
  } catch {}
 }
 

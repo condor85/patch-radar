@@ -4,6 +4,9 @@
    tests/changelog.test.js controlla che la prima voce e APP_VERSION coincidano e che il formato sia corretto.
    Tipi ammessi: nuovo, migliorato, sicurezza, corretto. */
 const CHANGELOG = [
+ {version: "1.3.2", date: "2026-11-18", changes: [
+  {type: "corretto", text: "Se i dati salvati sul telefono (giochi nascosti, patch lette, salvati) risultano rovinati, l'app li ripulisce e si avvia lo stesso, invece di restare bianca."},
+ ]},
  {version: "1.3.1", date: "2026-11-18", changes: [
   {type: "corretto", text: "Nelle note delle patch non compaiono più pezzi di codice come [dynamiclink href=…], e le parole tra parentesi quadre, come [AMD] o [ESC], si leggono per intero, senza la barra rovesciata."},
   {type: "corretto", text: "Riassunti, traduzioni e avvisi per parola chiave non perdono più le etichette tra parentesi quadre ([Controller], [Kliff]) né i nomi dei tasti ([RMB], [SPACE])."},

@@ -53,6 +53,8 @@ jobs:
         run: node tests/backup.test.js
       - name: Testo delle patch
         run: node tests/plaintext.test.js
+      - name: Dati salvati sul dispositivo
+        run: node tests/storage.test.js
       # Prova in un vero browser con dati finti: errori in console, schermate principali, uso da tastiera e accessibilità (axe).
       # Le versioni di Playwright e axe-core sono fissate in package-lock.json; `npm ci` non scrive nulla e non esegue script di installazione.
       - name: Installa gli strumenti di prova del browser

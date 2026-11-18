@@ -45,12 +45,19 @@ function setGames(list) {
 }
 function visibleKeys() { const v = ORDER.filter(k => !hidden.includes(k)); return v.length ? v : ORDER; }
 function ensureSelected() { const v = visibleKeys(); if (!v.includes(selected)) selected = v[0]; }
-function loadHidden() { try { hidden = JSON.parse(localStorage.getItem(HIDDEN_KEY) || "[]") || []; } catch { hidden = []; } }
+/* Quello che sta in localStorage non è mai da dare per buono: un valore leggibile ma di forma sbagliata (un oggetto al posto di un elenco)
+   farebbe fallire .includes() all'avvio e l'app resterebbe bianca. Qui si tiene solo ciò che ha la forma giusta. */
+function loadHidden() { try { const v = JSON.parse(localStorage.getItem(HIDDEN_KEY) || "[]"); hidden = Array.isArray(v) ? v.map(String).filter(k => /^\d{1,9}$/.test(k)) : []; } catch { hidden = []; } }
 function saveHidden() { try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(hidden)); } catch {} }
 setGames(DEFAULT_GAMES);
 const PENDING_KEY = "game_patch_radar_pending_v1";
 let pending = {add: [], remove: [], watch: []};
-function loadPending() { try { pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "null") || pending; } catch {} }
+function loadPending() {
+ try {
+  const v = JSON.parse(localStorage.getItem(PENDING_KEY) || "null");
+  if (v && typeof v === "object" && !Array.isArray(v)) { const list = a => Array.isArray(a) ? a.filter(x => x && typeof x === "object") : []; pending = {add: list(v.add), remove: list(v.remove), watch: list(v.watch)}; }
+ } catch {}
+}
 function savePending() { try { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch {} }
 function applyPending(list) {
  const now = Date.now(), has = new Set(list.map(g => String(g.appid)));
