@@ -93,20 +93,22 @@ async function signKey() {
   // spegnerebbe la verifica proprio quando qualcuno può approfittarne per far passare una notifica falsa.
   return recalledSignKey();
 }
-// true: firma valida · false: assente, scaduta o non valida · null: questo browser non sa verificare Ed25519 (si accetta, restano i controlli sui link)
+// Esito: {ok: true} firma valida · {ok: null} questo browser non sa verificare Ed25519 (si accetta, restano i controlli sui link)
+// · {ok: false, why} scartata, con il motivo: «senza firma», «scaduta», «chiave non valida» o «firma diversa»
 async function verifyMessage(m, pub) {
   const sig = tagValue(m, "sig:"), ts = Number(tagValue(m, "ts:"));
-  if (!sig || !Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > SIGN_MAX_AGE) return false;
+  if (!sig || !tagValue(m, "ts:")) return {ok: false, why: "senza firma"};
+  if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > SIGN_MAX_AGE) return {ok: false, why: "firma scaduta"};
   let raw;
-  try { raw = b64u(pub); } catch (err) { return false; }
-  if (raw.length !== 32) return false;     // chiave in config.json scritta male: meglio scartare che non controllare
+  try { raw = b64u(pub); } catch (err) { return {ok: false, why: "chiave non valida"}; }
+  if (raw.length !== 32) return {ok: false, why: "chiave non valida"};     // chiave in config.json scritta male: meglio scartare che non controllare
   let key;
   try { key = await crypto.subtle.importKey("raw", raw, {name: "Ed25519"}, false, ["verify"]); }
-  catch (err) { return err && err.name === "NotSupportedError" ? null : false; }   // solo «algoritmo non supportato» spegne il controllo
+  catch (err) { return err && err.name === "NotSupportedError" ? {ok: null} : {ok: false, why: "chiave non valida"}; }   // solo «algoritmo non supportato» spegne il controllo
   try {
     const data = new TextEncoder().encode([SIGN_VERSION, trimNl(m.topic), trimNl(m.title), trimNl(m.message), trimNl(m.click), String(ts)].join("\n"));
-    return await crypto.subtle.verify({name: "Ed25519"}, key, b64u(sig), data);
-  } catch (err) { return false; }
+    return (await crypto.subtle.verify({name: "Ed25519"}, key, b64u(sig), data)) ? {ok: true} : {ok: false, why: "firma diversa"};
+  } catch (err) { return {ok: false, why: "firma diversa"}; }
 }
 
 // Notifiche push (inviate da ntfy.sh): mostra il messaggio ricevuto
@@ -119,9 +121,12 @@ self.addEventListener("push", e => {
     const silent = await isQuiet();
     if (d.event === "message" && m) {
       const pub = await signKey();
-      if (pub && (await verifyMessage(m, pub)) === false) {
-        // Il browser vuole comunque una notifica per ogni push: se ne mostra una sola, muta e sempre la stessa (stesso tag)
-        await self.registration.showNotification("Game Patch Radar", {body: "Ignorata una notifica non autentica.", icon, badge: icon, tag: "rejected", silent: true, data: {url: self.registration.scope}});
+      const check = pub ? await verifyMessage(m, pub) : {ok: true};
+      if (check.ok === false) {
+        // Il browser vuole comunque una notifica per ogni push: se ne mostra una sola, muta e sempre la stessa (stesso tag).
+        // Il motivo e l'argomento (senza il nome base, che è pubblico solo in parte) aiutano a capire perché è stata scartata.
+        const topic = String(m.topic || "").split("-").slice(-2).join("-").slice(0, 40);
+        await self.registration.showNotification("Game Patch Radar", {body: "Ignorata una notifica non autentica (" + check.why + (topic ? ", argomento …" + topic : "") + ").", icon, badge: icon, tag: "rejected", silent: true, data: {url: self.registration.scope}});
         return;
       }
       const sig = tagValue(m, "sig:");

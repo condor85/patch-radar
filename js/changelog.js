@@ -4,6 +4,9 @@
    tests/changelog.test.js controlla che la prima voce e APP_VERSION coincidano e che il formato sia corretto.
    Tipi ammessi: nuovo, migliorato, sicurezza, corretto. */
 const CHANGELOG = [
+ {version: "1.3.4", date: "2026-11-19", changes: [
+  {type: "migliorato", text: "La notifica «Ignorata una notifica non autentica» ora dice il motivo (senza firma, firma scaduta, firma diversa o chiave non valida), per capire perché una notifica è stata scartata."},
+ ]},
  {version: "1.3.3", date: "2026-11-18", changes: [
   {type: "corretto", text: "In «Gestisci», cambiare il prezzo di un gioco già osservato (clic con Maiusc su «Smetti») non lo toglie più dall'osservazione e non cancella più il prezzo."},
  ]},

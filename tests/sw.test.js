@@ -186,6 +186,17 @@ print(json.dumps({"pub": fn._b64u(ed25519.public_key(bytes([7]) * 32)), "tags": 
     await pushMsg(w, { id: "x", event: "message", topic: BASE.topic, title: "Valheim: nuovo aggiornamento", message: "Scarica subito", click: "https://evil.example/", tags: ["video_game"] });
     assert.equal(w.shown.length, 1); assert.equal(w.shown[0].tag, "rejected"); assert.equal(w.shown[0].silent, true);
     assert.equal(w.shown[0].title, "Game Patch Radar");
+    assert.match(w.shown[0].body, /senza firma/);
+  });
+
+  await t("firma: il motivo dello scarto compare nel testo (firma diversa, scaduta)", async () => {
+    const spec = { ...BASE, ts: Math.floor(Date.now() / 1000) };
+    const { pub } = signed(spec);
+    let w = await withKey(pub); await pushMsg(w, msgOf(spec, { title: "Altro" }));
+    assert.match(w.shown[0].body, /firma diversa/);
+    const old = { ...BASE, ts: Math.floor(Date.now() / 1000) - 8 * 86400 };
+    w = await withKey(signed(old).pub); await pushMsg(w, msgOf(old));
+    assert.match(w.shown[0].body, /firma scaduta/);
   });
 
   await t("firma: qualunque campo alterato (titolo, testo, link, argomento) invalida la notifica", async () => {
