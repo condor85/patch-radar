@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 30   # un'esecuzione bloccata (es. Gemini che non risponde) non deve accodare tutte le successive
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment_retry.outputs.page_url || steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -95,9 +95,19 @@ jobs:
         if: steps.fetch.outputs.changed == 'true' || github.event_name != 'schedule'
         with:
           path: _site
+      # Ogni tanto GitHub risponde "No artifacts named github-pages were found" subito dopo il caricamento (ritardo lato GitHub):
+      # il primo tentativo può fallire senza colpa nostra, quindi si aspetta un poco e si riprova una volta sola.
       - id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
         if: steps.fetch.outputs.changed == 'true' || github.event_name != 'schedule'
+        continue-on-error: true
+      - name: Attendi prima di riprovare la pubblicazione
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 30
+      - id: deployment_retry
+        name: Riprova la pubblicazione
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        if: steps.deployment.outcome == 'failure'
 
   # Se l'aggiornamento fallisce due volte di fila apre una segnalazione sul repository (GitHub avvisa il proprietario per email);
   # alla prima esecuzione riuscita la chiude. Permessi minimi, solo qui: non tocca il codice né i dati.
