@@ -6,7 +6,7 @@
     "test:browser": "node tests/browser.test.js"
   },
   "devDependencies": {
-    "axe-core": "4.14.0",
+    "axe-core": "4.14.1",
     "playwright": "1.63.0"
   }
 }
